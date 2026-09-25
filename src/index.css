@@ -1,0 +1,106 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #f2f6f0;
+  --color-foreground: #162419;
+  --color-card: #ffffff;
+  --color-card-foreground: #162419;
+  --color-primary: #0d2818;
+  --color-primary-foreground: #f2f6f0;
+  --color-secondary: #e4f4e8;
+  --color-secondary-foreground: #162419;
+  --color-muted: #e8efe9;
+  --color-muted-foreground: #4d7057;
+  --color-accent: #c1f135;
+  --color-accent-foreground: #0d2818;
+  --color-border: #d4e7d8;
+  --color-ring: #c1f135;
+  --radius: 16px;
+
+  --font-display: "Manrope", sans-serif;
+  --font-body: "Manrope", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+.event-map { position: relative; }
+.event-map .leaflet-control-zoom a { color: #102318; }
+.event-map-marker-wrapper { background: transparent; border: 0; }
+.event-map-pin {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin: 5px 0 0 12px;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: #bdf238;
+  box-shadow: 0 0 0 3px rgba(189, 242, 56, .72), 0 7px 16px rgba(16, 35, 24, .35);
+  transform: rotate(-45deg);
+  transition: filter .18s ease, transform .18s ease;
+}
+.event-map-pin:hover { filter: brightness(1.05); transform: rotate(-45deg) scale(1.12); }
+.event-map-pin-image {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, .95);
+  border-radius: 999px;
+  background: #eaf1e5;
+  color: #102318;
+  font-size: 13px;
+  font-weight: 900;
+  transform: rotate(45deg);
+}
+.event-map-pin-image img { width: 100%; height: 100%; object-fit: cover; }
+.event-map-tooltip { border: 0; border-radius: 12px; padding: 9px 11px; color: #102318; font-family: inherit; box-shadow: 0 8px 20px rgba(16, 35, 24, .18); }
+.event-map-tooltip b, .event-map-tooltip span { display: block; }
+.event-map-tooltip b { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.event-map-tooltip span { margin-top: 3px; color: #5d7061; font-size: 11px; }
+
+/* Leaflet uses layers up to z-index 1000. Forms and notices related to an
+   opened event must stay above both the map and the event drawer. */
+.z-\[60\], .z-\[65\], .z-\[70\] { z-index: 2100; }
+.z-\[80\] { z-index: 2200; }
+
+/* Фильтры доступны на отдельной странице карты, а главная оставляет каталог лёгким. */
+#events > .grid { display: block; }
+#events > .grid > aside { display: none; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(13, 40, 24, 0.2);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 40, 24, 0.4);
+}

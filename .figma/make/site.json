@@ -1,0 +1,10 @@
+{
+  "description": "Connect with others to attend events together on this Russian-language platform, making it easy to find both activities and companions.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
