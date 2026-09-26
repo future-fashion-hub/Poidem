@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
@@ -84,8 +84,18 @@ export const backendApi = {
   async deleteOwnEvent(id: number) { return request<void>(`/events/${id}`, { method: "DELETE" }); },
   async listEventParticipants(id: number) { return request<Paginated<UserShort>>(`/events/${id}/participants?page=1&limit=20`); },
   async listEventCompanies(eventId: number) { return request<Paginated<Company>>(`/events/${eventId}/companies?page=1&limit=100`); },
+  async getCompany(companyId: number) { return request<Company>(`/companies/${companyId}`); },
+  async updateCompany(companyId: number, input: CompanyUpdate) { return request<Company>(`/companies/${companyId}`, { method: "PATCH", body: JSON.stringify(input) }); },
+  async deleteCompany(companyId: number) { return request<void>(`/companies/${companyId}`, { method: "DELETE" }); },
+  async listCompanyMembers(companyId: number) { return request<Paginated<UserShort>>(`/companies/${companyId}/members?page=1&limit=100`); },
+  async leaveCompany(companyId: number) { return request<void>(`/companies/${companyId}/members/me`, { method: "DELETE" }); },
+  async removeCompanyMember(companyId: number, userId: number) { return request<void>(`/companies/${companyId}/members/${userId}`, { method: "DELETE" }); },
   async joinOpenCompany(companyId: number) { return request<void>(`/companies/${companyId}/join`, { method: "POST" }); },
+  async closeCompanyRecruitment(companyId: number) { return request<Company>(`/companies/${companyId}/close`, { method: "POST" }); },
+  async openCompanyRecruitment(companyId: number) { return request<Company>(`/companies/${companyId}/open`, { method: "POST" }); },
   async createCompanyApplication(companyId: number, message: string | null) { return request<Application>(`/companies/${companyId}/applications`, { method: "POST", body: JSON.stringify({ message }) }); },
+  async getMyCompanyApplication(companyId: number) { return request<Application>(`/companies/${companyId}/applications/me`); },
+  async cancelMyCompanyApplication(companyId: number) { return request<void>(`/companies/${companyId}/applications/me`, { method: "DELETE" }); },
   async joinEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "POST" }); },
   async cancelEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "DELETE" }); },
   async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
@@ -109,6 +119,7 @@ export const backendApi = {
   async getAdminUser(id: number) { return request<User>(`/admin/users/${id}`); },
   async setAdminUserStatus(id: number, status: User["status"]) { return request<User>(`/admin/users/${id}/${status === "banned" ? "ban" : "unban"}`, { method: "POST" }); },
   async listAdminEvents(_search = "", status?: Event["status"]) { return request<Paginated<Event>>(`/admin/events${query({ status, page: 1, limit: 100 })}`); },
+  async getAdminEvent(id: number) { return request<Event>(`/admin/events/${id}`); },
   async updateAdminEvent(id: number, input: Partial<Event>) { return request<Event>(`/admin/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }); },
   async moderateAdminEvent(id: number, status: Event["status"], reason?: string) { const action = status === "active" ? "approve" : status === "blocked" ? "block" : "reject"; return request<Event>(`/admin/events/${id}/${action}`, { method: "POST", body: reason ? JSON.stringify({ reason }) : undefined }); },
   async listAdminCompanies() { return request<Paginated<Company>>("/admin/companies?page=1&limit=100"); },

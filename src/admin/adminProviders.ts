@@ -80,6 +80,7 @@ const dataProvider = {
   },
   async getOne(resource: string, params: GetOneParams<RaRecord>) {
     if (resource === "users") return { data: await mockApi.getAdminUser(Number(params.id)) as unknown as RaRecord };
+    if (resource === "events") return { data: await mockApi.getAdminEvent(Number(params.id)) as unknown as RaRecord };
     const items = await getAll(resource);
     const item = items.find((entry) => entry.id === params.id);
     if (!item) throw new Error("Запись не найдена");

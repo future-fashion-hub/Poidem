@@ -74,6 +74,8 @@ export type Company = {
   maxAge: number | null;
 };
 
+export type CompanyUpdate = Partial<Pick<Company, "name" | "description" | "maxMembers" | "joinType" | "rules" | "minAge" | "maxAge">>;
+
 export type CompanyMessage = {
   id: number;
   companyId: number;
