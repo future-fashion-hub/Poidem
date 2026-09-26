@@ -50,7 +50,8 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   }
   if (!response.ok) throw await toError(response);
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  const body = await response.text();
+  return (body ? JSON.parse(body) : undefined) as T;
 }
 
 const page = <T>(items: T[]): Paginated<T> => ({ items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: items.length ? 1 : 0 } });
@@ -79,8 +80,8 @@ export const backendApi = {
   async joinOpenCompany(companyId: number) { return request<void>(`/companies/${companyId}/join`, { method: "POST" }); },
   async createCompanyApplication(companyId: number, message: string | null) { return request<Application>(`/companies/${companyId}/applications`, { method: "POST", body: JSON.stringify({ message }) }); },
   async joinEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "POST" }); },
-  async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request" }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
-  async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[] }) { return request<User>("/users/me", { method: "PATCH", body: JSON.stringify(input) }); },
+  async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
+  async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { return request<User>("/users/me", { method: "PATCH", body: JSON.stringify(input) }); },
   async listMyApplications() { return request<Paginated<Application>>("/users/me/applications?page=1&limit=100"); },
   async listCompanyApplications(companyId: number) { return request<Paginated<Application>>(`/companies/${companyId}/applications?status=pending&page=1&limit=100`); },
   async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { return request<Application>(`/companies/${companyId}/applications/${applicationId}/${action}`, { method: "POST" }); },

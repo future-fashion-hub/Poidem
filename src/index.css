@@ -41,7 +41,7 @@ body {
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
-.event-map { position: relative; }
+.event-map { position: relative; z-index: 0; }
 .event-map .leaflet-control-zoom a { color: #102318; }
 .event-map-marker-wrapper { background: transparent; border: 0; }
 .event-map-pin {
@@ -82,6 +82,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
    opened event must stay above both the map and the event drawer. */
 .z-\[60\], .z-\[65\], .z-\[70\] { z-index: 2100; }
 .z-\[80\] { z-index: 2200; }
+
+/* Agreement is collected on registration only; do not ask again on sign-in. */
+.z-\[60\] label.flex.items-start,
+.z-\[60\] > div > p.mt-2.text-center { display: none; }
 
 /* Фильтры доступны на отдельной странице карты, а главная оставляет каталог лёгким. */
 #events > .grid { display: block; }

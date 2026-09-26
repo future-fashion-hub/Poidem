@@ -200,7 +200,7 @@ export function AdminDashboard() {
   const companies = useGetList("companies", { pagination: { page: 1, perPage: 1 } });
   const reports = useGetList("reports", { pagination: { page: 1, perPage: 1 }, filter: { status: "pending" } });
   return <Box sx={{ p: { xs: 2, md: 3 } }}>
-    <Title title="Обзор" />
+    <Title title="Дашборд" />
     <Typography variant="overline" sx={{ color: "#64806a", fontWeight: 800, letterSpacing: ".16em" }}>Пойдём · сегодня</Typography>
     <Typography variant="h4" sx={{ mt: .5, mb: 3, fontWeight: 900, letterSpacing: "-.04em" }}>Состояние платформы</Typography>
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }, gap: 2 }}>

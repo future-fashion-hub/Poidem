@@ -15,6 +15,8 @@ export type User = UserShort & {
   status: "active" | "banned";
   isProfileComplete: boolean;
   createdAt: string;
+  gender?: "male" | "female" | "other" | null;
+  birthDate?: string | null;
 };
 
 export type Event = {
@@ -54,6 +56,8 @@ export type Company = {
   status: "active" | "closed" | "blocked";
   createdAt: string;
   updatedAt: string;
+  minAge?: number | null;
+  maxAge?: number | null;
 };
 
 export type CompanyMessage = {
