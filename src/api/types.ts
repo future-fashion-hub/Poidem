@@ -15,8 +15,8 @@ export type User = UserShort & {
   status: "active" | "banned";
   isProfileComplete: boolean;
   createdAt: string;
-  gender?: "male" | "female" | "other" | null;
-  birthDate?: string | null;
+  gender: "male" | "female" | "other" | null;
+  birthDate: string | null;
 };
 
 export type Event = {
@@ -36,11 +36,25 @@ export type Event = {
   } | null;
   imageUrl: string | null;
   status: "pending" | "active" | "rejected" | "blocked" | "completed";
+  moderationReason: string | null;
   participantsCount: number;
   companiesCount: number;
   creator: UserShort;
   createdAt: string;
   updatedAt: string;
+};
+
+export type EventInput = {
+  title: string;
+  description: string | null;
+  categoryId: number;
+  cityId: number;
+  startsAt: string;
+  endsAt: string | null;
+  locationName: string;
+  address: string | null;
+  location: Event["location"];
+  imageUrl: string | null;
 };
 
 export type Company = {
@@ -56,8 +70,8 @@ export type Company = {
   status: "active" | "closed" | "blocked";
   createdAt: string;
   updatedAt: string;
-  minAge?: number | null;
-  maxAge?: number | null;
+  minAge: number | null;
+  maxAge: number | null;
 };
 
 export type CompanyMessage = {
@@ -74,7 +88,7 @@ export type Application = {
   user: UserShort;
   message: string | null;
   status: "pending" | "approved" | "rejected" | "cancelled";
-  resolutionReason: "COMPANY_BLOCKED" | "EVENT_COMPLETED" | null;
+  resolutionReason: "COMPANY_BLOCKED" | "EVENT_COMPLETED" | "EVENT_DELETED" | null;
   createdAt: string;
   resolvedAt: string | null;
 };

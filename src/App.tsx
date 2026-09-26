@@ -7,6 +7,7 @@ import UserDashboard from "./components/UserDashboard";
 import Onboarding from "./components/Onboarding";
 import RegisterModal from "./components/RegisterModal";
 import ChatsPage from "./components/ChatsPage";
+import EventCreateModal from "./components/EventCreateModal";
 import { ADMIN_SESSION_KEY } from "./admin/adminSession";
 
 type View = "home" | "map" | "profile" | "chats";
@@ -17,6 +18,11 @@ const publicViews: View[] = ["home", "map", "profile", "chats"];
 function currentViewFromUrl(): View {
   const value = window.location.hash.replace(/^#\/?/, "") as View;
   return publicViews.includes(value) ? value : "home";
+}
+
+function queryNumber(name: string) {
+  const value = Number(new URLSearchParams(window.location.search).get(name));
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -41,25 +47,38 @@ export default function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [cities, setCities] = useState<DictionaryItem[]>([]);
   const [categories, setCategories] = useState<DictionaryItem[]>([]);
+  const [interests, setInterests] = useState<DictionaryItem[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [joinedCompanyIds, setJoinedCompanyIds] = useState<number[]>([]);
-  const [search, setSearch] = useState("");
-  const [cityId, setCityId] = useState(0);
-  const [categoryId, setCategoryId] = useState(0);
-  const [sort, setSort] = useState("date");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
+  const [cityId, setCityId] = useState(() => queryNumber("cityId"));
+  const [categoryId, setCategoryId] = useState(() => queryNumber("categoryId"));
+  const [sort, setSort] = useState(() => new URLSearchParams(window.location.search).get("sort") === "popular" ? "popular" : "date");
   const [loading, setLoading] = useState(true);
   const [authOpen, setAuthOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [companyOpen, setCompanyOpen] = useState(false);
+  const [eventCreateOpen, setEventCreateOpen] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
   const flash = (next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 3200); };
-  const handleError = (error: unknown) => flash({ kind: "error", text: error instanceof ApiError ? error.message : "Что-то пошло не так" });
+  const handleError = (error: unknown) => {
+    if (!(error instanceof ApiError)) return flash({ kind: "error", text: "Что-то пошло не так" });
+    const messages: Record<string, string> = {
+      AGE_RESTRICTION: user?.birthDate ? "Возраст не соответствует условиям этой компании." : "Для этой компании укажите дату рождения в профиле.",
+      COMPANY_FULL: "В компании уже нет свободных мест.",
+      APPLICATION_ALREADY_EXISTS: "Заявка уже отправлена организатору.",
+      ALREADY_IN_EVENT_COMPANY: "Вы уже состоите в компании этого мероприятия.",
+      PROFILE_INCOMPLETE: "Сначала заполните профиль.",
+      USER_BANNED: "Доступ к аккаунту ограничен.",
+    };
+    flash({ kind: "error", text: messages[error.code] ?? error.message });
+  };
 
   useEffect(() => {
     Promise.all([api.dictionaries(), api.listEvents()]).then(([dicts, list]) => {
-      setCities(dicts.cities); setCategories(dicts.categories); setEvents(list.items);
+      setCities(dicts.cities); setCategories(dicts.categories); setInterests(dicts.interests); setEvents(list.items);
       return api.getCurrentUser().then(async (currentUser) => { setUser(currentUser); setJoinedCompanyIds((await api.listMyCompanies()).items.map((company) => company.id)); }).catch(() => null);
     }).finally(() => setLoading(false));
   }, []);
@@ -81,8 +100,19 @@ export default function App() {
 
   useEffect(() => {
     const hash = view === "home" ? "" : `#${view}`;
-    if (window.location.hash !== hash) window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
+    if (window.location.hash !== hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
   }, [view]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (cityId) params.set("cityId", String(cityId));
+    if (categoryId) params.set("categoryId", String(categoryId));
+    if (sort !== "date") params.set("sort", sort);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) window.history.replaceState(null, "", nextUrl);
+  }, [search, cityId, categoryId, sort]);
 
   const openEvent = async (event: Event) => {
     setSelected(event); setCompanies([]);
@@ -119,15 +149,16 @@ export default function App() {
 
   return <div className="min-h-screen bg-[#f5f7f2] text-[#102318]">
     <Header user={user} view={view} onNavigate={(next) => { setView(next); setSelected(null); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
-    {onboardingRequired && user ? <Onboarding user={user} cities={cities} categories={categories} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
-    {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
-    {!onboardingRequired && view === "profile" && user ? <UserDashboard user={user} cities={cities} categories={categories} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
+    {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
+    {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} onCreate={() => requireAuth(() => setEventCreateOpen(true))} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
+    {!onboardingRequired && view === "profile" && user ? <UserDashboard user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
     {selected && <EventDrawer event={selected} city={cities.find((item) => item.id === selected.cityId)} category={categories.find((item) => item.id === selected.categoryId)} companies={companies} joinedCompanyIds={joinedCompanyIds} onClose={() => setSelected(null)} onJoin={handleCompanyAction} onSolo={() => requireAuth(async () => { try { await mockApi.joinEventSolo(selected.id); flash({ kind: "success", text: "Событие добавлено в ваши планы" }); } catch (error) { handleError(error); } })} onCreate={() => requireAuth(() => setCompanyOpen(true))} />}
     {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onLogin={authenticate} onAdminLogin={authenticateAdmin} />}
     {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} onRegister={register} onPasswordRegister={registerWithPassword} />}
     {companyOpen && selected && <CreateCompanyModal event={selected} onClose={() => setCompanyOpen(false)} onCreated={async () => { setCompanyOpen(false); await refreshCompanies(); setJoinedCompanyIds((await api.listMyCompanies()).items.map((company) => company.id)); flash({ kind: "success", text: "Компания создана" }); }} />}
+    {eventCreateOpen && <EventCreateModal cities={cities} categories={categories} onClose={() => setEventCreateOpen(false)} onCreated={(event) => { setEventCreateOpen(false); flash({ kind: "success", text: `«${event.title}» отправлено на модерацию` }); setView("profile"); }} />}
     {notice && <div role="status" className={`fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-2xl px-5 py-3 text-sm font-semibold shadow-2xl ${notice.kind === "success" ? "bg-[#102318] text-white" : "bg-[#9e3128] text-white"}`}><Icon name={notice.kind === "success" ? "check" : "close"} size={18}/>{notice.text}</div>}
   </div>;
 }
@@ -141,8 +172,8 @@ function Header({ user, view, onNavigate, onAuth, onRegister, onLogout }: { user
   </div></header>;
 }
 
-function HomeHero({ onNavigate }: { onNavigate: (view: View) => void }) {
-  return <main><section className="relative overflow-hidden border-b border-[#dfe7dc] bg-[#eaf1e5]"><div className="absolute inset-0 opacity-60 [background-image:radial-gradient(#8da28f_1px,transparent_1px)] [background-size:22px_22px]"/><div className="absolute -right-24 -top-36 h-[460px] w-[460px] rounded-full bg-[#bdf238]/45 blur-[90px]"/><div className="relative mx-auto grid max-w-[1240px] items-center gap-8 px-5 py-10 lg:grid-cols-[1.08fr_.92fr] lg:px-8 lg:py-14"><div className="relative z-10"><p className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#abc5a9] bg-white/60 px-3 py-1.5 text-xs font-bold text-[#426349]"><span className="h-2 w-2 rounded-full bg-[#86c01c]"/>Встречаемся в реальном мире</p><h1 className="max-w-2xl text-4xl font-black leading-[1.03] tracking-[-.055em] sm:text-5xl lg:text-6xl">Событие уже есть.<br/><span className="text-[#53705a]">Найдём, с кем пойти.</span></h1><p className="mt-5 max-w-xl text-base leading-7 text-[#5d7061]">Находите интересные планы, создавайте компании и знакомьтесь вживую.</p><div className="mt-8 flex flex-wrap gap-3"><a href="#events" className="rounded-xl bg-[#bdf238] px-5 py-3 text-sm font-extrabold">Смотреть мероприятия</a><button onClick={() => onNavigate("map")} className="rounded-xl border border-[#b9cbb8] bg-white/70 px-5 py-3 text-sm font-extrabold text-[#25452d]">Открыть карту</button></div></div><div className="relative -my-4 lg:-mr-8"><Globe/></div></div></section></main>;
+function HomeHero({ onNavigate, onCreate }: { onNavigate: (view: View) => void; onCreate: () => void }) {
+  return <main><section className="relative overflow-hidden border-b border-[#dfe7dc] bg-[#eaf1e5]"><div className="absolute inset-0 opacity-60 [background-image:radial-gradient(#8da28f_1px,transparent_1px)] [background-size:22px_22px]"/><div className="absolute -right-24 -top-36 h-[460px] w-[460px] rounded-full bg-[#bdf238]/45 blur-[90px]"/><div className="relative mx-auto grid max-w-[1240px] items-center gap-8 px-5 py-10 lg:grid-cols-[1.08fr_.92fr] lg:px-8 lg:py-14"><div className="relative z-10"><p className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#abc5a9] bg-white/60 px-3 py-1.5 text-xs font-bold text-[#426349]"><span className="h-2 w-2 rounded-full bg-[#86c01c]"/>Встречаемся в реальном мире</p><h1 className="max-w-2xl text-4xl font-black leading-[1.03] tracking-[-.055em] sm:text-5xl lg:text-6xl">Событие уже есть.<br/><span className="text-[#53705a]">Найдём, с кем пойти.</span></h1><p className="mt-5 max-w-xl text-base leading-7 text-[#5d7061]">Находите интересные планы, создавайте компании и знакомьтесь вживую.</p><div className="mt-8 flex flex-wrap gap-3"><a href="#events" className="rounded-xl bg-[#bdf238] px-5 py-3 text-sm font-extrabold">Смотреть мероприятия</a><button onClick={() => onNavigate("map")} className="rounded-xl border border-[#b9cbb8] bg-white/70 px-5 py-3 text-sm font-extrabold text-[#25452d]">Открыть карту</button><button onClick={onCreate} className="rounded-xl border border-[#25452d] bg-[#25452d] px-5 py-3 text-sm font-extrabold text-[#dff8a1]">Создать мероприятие</button></div></div><div className="relative -my-4 lg:-mr-8"><Globe/></div></div></section></main>;
 }
 
 function EventsCatalog({ events, cities, categories, cityId, categoryId, search, sort, setCityId, setCategoryId, setSearch, setSort, loading, onSelect }: { events: Event[]; cities: DictionaryItem[]; categories: DictionaryItem[]; cityId: number; categoryId: number; search: string; sort: string; setCityId: (id: number) => void; setCategoryId: (id: number) => void; setSearch: (value: string) => void; setSort: (value: string) => void; loading: boolean; onSelect: (event: Event) => void }) {
@@ -171,7 +202,7 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
   const companies = allCompanies.filter((company) => company.status === "active" && company.membersCount < company.maxMembers);
   return <div className="fixed inset-0 z-[2000] flex justify-end bg-[#0b1710]/30 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className="h-full w-full max-w-2xl overflow-y-auto bg-[#f7f9f5] shadow-2xl"><div className="relative h-64 sm:h-72"><img src={event.imageUrl ?? ""} className="h-full w-full object-cover" alt=""/><div className="absolute inset-0 bg-gradient-to-t from-[#0b1710]/70 to-transparent"/><button onClick={onClose} aria-label="Закрыть" className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-2xl bg-white/90"><Icon name="close"/></button><span className="absolute bottom-5 left-6 rounded-full bg-[#bdf238] px-3 py-1.5 text-xs font-extrabold">{category?.name}</span></div><div className="p-6 sm:p-8"><p className="text-sm font-bold text-[#68816d]">{dateLabel(event.startsAt)}</p><h2 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-4xl">{event.title}</h2><div className="mt-5 flex flex-wrap gap-3 text-sm text-[#5d7061]"><span className="flex items-center gap-2 rounded-xl bg-white px-3 py-2"><Icon name="pin" size={17}/>{city?.name}, {event.locationName}</span><span className="flex items-center gap-2 rounded-xl bg-white px-3 py-2"><Icon name="users" size={17}/>{event.participantsCount} идут</span></div><p className="mt-6 leading-7 text-[#526258]">{event.description}</p>
     <div className="mt-8 flex items-end justify-between"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#78907d]">Компании</p><h3 className="mt-1 text-2xl font-extrabold">Идём вместе</h3></div><button onClick={onCreate} className="flex items-center gap-2 rounded-xl border border-[#cfdacd] bg-white px-3 py-2 text-sm font-bold"><Icon name="plus" size={17}/>Создать</button></div>
-    <div className="mt-5 space-y-3">{companies.length ? companies.map((company) => <div key={company.id} className="rounded-2xl border border-[#dde6db] bg-white p-5"><div className="flex items-start justify-between gap-4"><div><div className="mb-2 flex flex-wrap items-center gap-2"><h4 className="font-extrabold">{company.name}</h4><span className="rounded-full bg-[#eff4ec] px-2 py-0.5 text-[10px] font-bold uppercase text-[#617165]">{company.joinType === "open" ? "Сразу" : "По заявке"}</span></div><p className="text-sm leading-5 text-[#68786c]">{company.description}</p></div><div className="shrink-0 text-right text-xs text-[#718075]"><b className="text-base text-[#102318]">{company.membersCount}/{company.maxMembers}</b><br/>участников</div></div><div className="mt-4 flex items-center justify-between border-t border-[#edf1ea] pt-4"><span className="text-xs text-[#748279]">Организатор: {company.owner.firstName}</span>{joinedCompanyIds.includes(company.id) ? <span className="rounded-xl bg-[#eff9db] px-4 py-2 text-xs font-bold text-[#31513a]">Вы уже в компании</span> : <button onClick={() => onJoin(company)} className="rounded-xl bg-[#102318] px-4 py-2 text-xs font-bold text-white">{company.joinType === "open" ? "Присоединиться" : "Отправить заявку"}</button>}</div></div>) : <div className="rounded-2xl border border-dashed border-[#cfdacd] bg-white p-8 text-center text-sm text-[#738076]">Пока компаний нет. Создайте первую.</div>}</div>
+    <div className="mt-5 space-y-3">{companies.length ? companies.map((company) => <div key={company.id} className="rounded-2xl border border-[#dde6db] bg-white p-5"><div className="flex items-start justify-between gap-4"><div><div className="mb-2 flex flex-wrap items-center gap-2"><h4 className="font-extrabold">{company.name}</h4><span className="rounded-full bg-[#eff4ec] px-2 py-0.5 text-[10px] font-bold uppercase text-[#617165]">{company.joinType === "open" ? "Сразу" : "По заявке"}</span>{company.minAge !== null || company.maxAge !== null ? <span className="rounded-full bg-[#fff5dc] px-2 py-0.5 text-[10px] font-bold text-[#7d6022]">Возраст: {company.minAge ?? "—"}–{company.maxAge ?? "—"}</span> : null}</div><p className="text-sm leading-5 text-[#68786c]">{company.description}</p></div><div className="shrink-0 text-right text-xs text-[#718075]"><b className="text-base text-[#102318]">{company.membersCount}/{company.maxMembers}</b><br/>участников</div></div><div className="mt-4 flex items-center justify-between border-t border-[#edf1ea] pt-4"><span className="text-xs text-[#748279]">Организатор: {company.owner.firstName}</span>{joinedCompanyIds.includes(company.id) ? <span className="rounded-xl bg-[#eff9db] px-4 py-2 text-xs font-bold text-[#31513a]">Вы уже в компании</span> : <button onClick={() => onJoin(company)} className="rounded-xl bg-[#102318] px-4 py-2 text-xs font-bold text-white">{company.joinType === "open" ? "Присоединиться" : "Отправить заявку"}</button>}</div></div>) : <div className="rounded-2xl border border-dashed border-[#cfdacd] bg-white p-8 text-center text-sm text-[#738076]">Пока компаний нет. Создайте первую.</div>}</div>
     <button onClick={onSolo} className="mt-4 w-full rounded-2xl border border-[#cfdacd] py-3 text-sm font-bold text-[#4f6655] hover:bg-white">Пойду самостоятельно</button>
   </div></div></div>;
 }
@@ -181,14 +212,12 @@ function AuthModal({ onClose, onLogin, onAdminLogin }: { onClose: () => void; on
   const [password, setPassword] = useState("");
   const [adminError, setAdminError] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(true);
-  const [policyOpen, setPolicyOpen] = useState(false);
   const submitAdmin = async (event: FormEvent) => {
     event.preventDefault(); setAdminError(""); setAdminLoading(true);
     try { await onAdminLogin(username, password); }
     catch (error) { setAdminError(error instanceof Error ? error.message : "Не удалось войти"); setAdminLoading(false); }
   };
-  return <><div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-[#08130d]/55 p-5 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="relative my-auto w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button onClick={onClose} aria-label="Закрыть окно входа" className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#bdf238] text-xl font-black">П</span><h2 className="mt-5 text-2xl font-black tracking-[-.04em]">Войти в «Пойдём»</h2><p className="mt-2 text-sm leading-6 text-[#6a796d]">Создайте аккаунт через подключённый сервис, чтобы находить компанию для событий.</p><div className="mt-5 grid grid-cols-3 gap-2">{(["google", "telegram", "vk"] as const).map((provider) => <button key={provider} disabled={!acceptedTerms} onClick={() => onLogin(provider)} className="rounded-xl border border-[#dce4da] px-2 py-3 text-xs font-bold hover:bg-[#f3f7f0] disabled:cursor-not-allowed disabled:opacity-45">{provider === "google" ? "Google" : provider === "telegram" ? "Telegram" : "VK"}</button>)}</div><p className="mt-2 text-center text-[11px] text-[#849187]">Вход станет доступен после принятия правил.</p><div className="my-6 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[.16em] text-[#92a096]"><span className="h-px flex-1 bg-[#e1e8df]"/>Вход с логином и паролем<span className="h-px flex-1 bg-[#e1e8df]"/></div><form onSubmit={submitAdmin} className="space-y-3"><label className="block text-xs font-bold text-[#526258]">Логин<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required placeholder="admin" className="mt-1.5 w-full rounded-xl border border-[#dce4da] px-4 py-3 text-sm font-normal outline-none focus:border-[#86b92e]"/></label><label className="block text-xs font-bold text-[#526258]">Пароль<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required placeholder="••••••••" className="mt-1.5 w-full rounded-xl border border-[#dce4da] px-4 py-3 text-sm font-normal outline-none focus:border-[#86b92e]"/></label><label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-[#f1f6ee] p-4 text-xs leading-5 text-[#526258]"><input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" className="mt-0.5 h-4 w-4 accent-[#557d26]"/><span>Я ознакомился(-ась) и принимаю <button type="button" onClick={() => setPolicyOpen(true)} className="font-bold text-[#416949] underline decoration-dotted underline-offset-2">Правила и политику безопасного участия</button>.</span></label>{adminError ? <p role="alert" className="rounded-xl bg-[#fff0ed] px-3 py-2 text-xs font-semibold text-[#9e3128]">{adminError}</p> : null}<button disabled={adminLoading || !acceptedTerms} className="w-full rounded-xl bg-[#102318] py-3.5 text-sm font-extrabold text-white disabled:opacity-50">{adminLoading ? "Проверяем…" : "Войти"}</button><p className="text-center text-[11px] text-[#92a096]">Демо: admin / poydem2026</p></form></div></div>{policyOpen && <PolicyModal onClose={() => setPolicyOpen(false)}/>}</>;
+  return <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-[#08130d]/55 p-5 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="relative my-auto w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button onClick={onClose} aria-label="Закрыть окно входа" className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#bdf238] text-xl font-black">П</span><h2 className="mt-5 text-2xl font-black tracking-[-.04em]">Войти в «Пойдём»</h2><p className="mt-2 text-sm leading-6 text-[#6a796d]">Войдите, чтобы находить компанию для событий и управлять своими планами.</p><div className="mt-5 grid grid-cols-3 gap-2">{(["google", "telegram", "vk"] as const).map((provider) => <button key={provider} onClick={() => onLogin(provider)} className="rounded-xl border border-[#dce4da] px-2 py-3 text-xs font-bold hover:bg-[#f3f7f0]">{provider === "google" ? "Google" : provider === "telegram" ? "Telegram" : "VK"}</button>)}</div><div className="my-6 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[.16em] text-[#92a096]"><span className="h-px flex-1 bg-[#e1e8df]"/>Вход с логином и паролем<span className="h-px flex-1 bg-[#e1e8df]"/></div><form onSubmit={submitAdmin} className="space-y-3"><label className="block text-xs font-bold text-[#526258]">Логин<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required placeholder="Ваш логин" className="mt-1.5 w-full rounded-xl border border-[#dce4da] px-4 py-3 text-sm font-normal outline-none focus:border-[#86b92e]"/></label><label className="block text-xs font-bold text-[#526258]">Пароль<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required placeholder="••••••••" className="mt-1.5 w-full rounded-xl border border-[#dce4da] px-4 py-3 text-sm font-normal outline-none focus:border-[#86b92e]"/></label>{adminError ? <p role="alert" className="rounded-xl bg-[#fff0ed] px-3 py-2 text-xs font-semibold text-[#9e3128]">{adminError}</p> : null}<button disabled={adminLoading} className="w-full rounded-xl bg-[#102318] py-3.5 text-sm font-extrabold text-white disabled:opacity-50">{adminLoading ? "Проверяем…" : "Войти"}</button></form></div></div>;
 }
 
 function PolicyModal({ onClose }: { onClose: () => void }) {
@@ -197,7 +226,7 @@ function PolicyModal({ onClose }: { onClose: () => void }) {
 
 function CreateCompanyModal({ event, onClose, onCreated }: { event: Event; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [maxMembers, setMaxMembers] = useState(5); const [joinType, setJoinType] = useState<"open" | "request">("open"); const [minAge, setMinAge] = useState(""); const [maxAge, setMaxAge] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  const submit = async (e: FormEvent) => { e.preventDefault(); const min = minAge ? Number(minAge) : null; const max = maxAge ? Number(maxAge) : null; if (min && max && min > max) { setError("Минимальный возраст не может быть больше максимального."); return; } setSaving(true); try { await mockApi.createCompany(event.id, { name, description: description || null, maxMembers, joinType, minAge: min, maxAge: max }); onCreated(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось создать компанию"); } finally { setSaving(false); } };
+  const submit = async (e: FormEvent) => { e.preventDefault(); const min = minAge ? Number(minAge) : null; const max = maxAge ? Number(maxAge) : null; if ((min !== null && (min < 14 || min > 100)) || (max !== null && (max < 14 || max > 100)) || (min !== null && max !== null && min > max)) { setError("Возраст указывается от 14 до 100 лет; нижняя граница не может быть выше верхней."); return; } setSaving(true); try { await api.createCompany(event.id, { name, description: description || null, maxMembers, joinType, minAge: min, maxAge: max }); onCreated(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось создать компанию"); } finally { setSaving(false); } };
   return <div className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/55 p-5 backdrop-blur-sm"><form onSubmit={submit} className="relative w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button type="button" onClick={onClose} className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><p className="pr-8 text-xs font-bold uppercase tracking-wider text-[#78907d]">{event.title}</p><h2 className="mt-2 text-2xl font-black">Создать компанию</h2><div className="mt-6 space-y-4"><label className="block text-sm font-semibold">Название<input autoFocus value={name} onChange={(e) => setName(e.target.value)} required maxLength={150} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="block text-sm font-semibold">Описание<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Участников<input type="number" min={2} max={100} value={maxMembers} onChange={(e) => setMaxMembers(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Вступление<select value={joinType} onChange={(e) => setJoinType(e.target.value as "open" | "request")} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"><option value="open">Свободное</option><option value="request">По заявке</option></select></label></div><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Возраст от<input type="number" min={14} max={100} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Возраст до<input type="number" min={14} max={100} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label></div></div>{error && <p className="mt-4 text-sm text-[#a33a31]">{error}</p>}<button disabled={saving} className="mt-6 w-full rounded-2xl bg-[#bdf238] py-3.5 text-sm font-extrabold">{saving ? "Создаём…" : "Создать компанию"}</button></form></div>;
 }
 

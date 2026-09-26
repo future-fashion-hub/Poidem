@@ -9,13 +9,6 @@ type EventMapProps = {
   onSelect: (event: Event) => void;
 };
 
-const FALLBACK_COORDINATES: Record<number, [number, number]> = {
-  1: [55.7558, 37.6173],
-  2: [59.9343, 30.3351],
-  3: [55.7961, 49.1064],
-  4: [56.8389, 60.6057],
-};
-
 function markerIcon(event: Event) {
   const fallback = event.title.slice(0, 1).toUpperCase();
   const image = event.imageUrl
@@ -60,11 +53,8 @@ export default function EventMap({ events, onSelect }: EventMapProps) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {events.map((event) => {
-        const fallback = FALLBACK_COORDINATES[event.cityId] ?? [55.75, 37.61];
-        const position: [number, number] = event.location
-          ? [event.location.latitude, event.location.longitude]
-          : fallback;
+      {events.filter((event) => event.location !== null).map((event) => {
+        const position: [number, number] = [event.location!.latitude, event.location!.longitude];
         return <Marker
           key={event.id}
           position={position}

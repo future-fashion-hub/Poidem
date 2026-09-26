@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, Button, Card, Chip, Stack, Typography } from "@mui/material";
 import PeopleRounded from "@mui/icons-material/PeopleRounded";
 import EventRounded from "@mui/icons-material/EventRounded";
@@ -32,6 +32,7 @@ import {
   type RaRecord,
 } from "react-admin";
 import type { Company, Event, Report, User } from "../api/types";
+import { api } from "../api";
 
 const userStatus = [{ id: "active", name: "Активен" }, { id: "banned", name: "Заблокирован" }];
 const eventStatus = [
@@ -42,8 +43,6 @@ const eventStatus = [
   { id: "completed", name: "Завершено" },
 ];
 const reportStatus = [{ id: "pending", name: "Новая" }, { id: "resolved", name: "Решена" }, { id: "rejected", name: "Отклонена" }];
-const categories = ["Технологии", "Музыка", "Искусство", "Спорт", "Еда", "Кино"].map((name, index) => ({ id: index + 1, name }));
-const cities = ["Москва", "Санкт-Петербург", "Казань", "Екатеринбург"].map((name, index) => ({ id: index + 1, name }));
 
 const userFilters = [<SearchInput key="search" source="q" placeholder="Имя пользователя" alwaysOn />];
 const eventFilters = [
@@ -144,6 +143,9 @@ export function EventList() {
 }
 
 export function EventEdit() {
+  const [cities, setCities] = useState<{ id: number; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => { void api.dictionaries().then((data) => { setCities(data.cities); setCategories(data.categories); }); }, []);
   return <Edit title="Редактирование мероприятия" mutationMode="pessimistic">
     <SimpleForm>
       <TextInput source="title" label="Название" fullWidth />

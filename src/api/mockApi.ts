@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, DictionaryItem, Event, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const cities: DictionaryItem[] = [
@@ -16,6 +16,18 @@ const categories: DictionaryItem[] = [
   { id: 15, name: "Предпринимательство", slug: "business" }, { id: 16, name: "Наука", slug: "science" },
   { id: 17, name: "Прогулки", slug: "walks" }, { id: 18, name: "Йога и здоровье", slug: "wellbeing" },
 ];
+const interests: DictionaryItem[] = [
+  { id: 101, name: "Музыка", slug: "music" }, { id: 102, name: "Спорт", slug: "sport" },
+  { id: 103, name: "Технологии", slug: "technology" }, { id: 104, name: "Искусство", slug: "art" },
+  { id: 105, name: "Еда", slug: "food" }, { id: 106, name: "Путешествия", slug: "travel" },
+  { id: 107, name: "Кино", slug: "cinema" }, { id: 108, name: "Игры", slug: "games" },
+  { id: 109, name: "Книги", slug: "books" }, { id: 110, name: "Театр", slug: "theater" },
+  { id: 111, name: "Фотография", slug: "photography" }, { id: 112, name: "Настольные игры", slug: "board-games" },
+  { id: 113, name: "Танцы", slug: "dance" }, { id: 114, name: "Психология", slug: "psychology" },
+  { id: 115, name: "Волонтёрство", slug: "volunteering" }, { id: 116, name: "Языки", slug: "languages" },
+  { id: 117, name: "Предпринимательство", slug: "business" }, { id: 118, name: "Наука", slug: "science" },
+  { id: 119, name: "Прогулки", slug: "walks" }, { id: 120, name: "Йога и здоровье", slug: "yoga-and-health" },
+];
 const people: UserShort[] = [
   { id: 1, firstName: "Алексей", lastName: "Морозов", avatarUrl: null },
   { id: 2, firstName: "Маша", lastName: "Орлова", avatarUrl: null },
@@ -23,7 +35,7 @@ const people: UserShort[] = [
   { id: 4, firstName: "Лена", lastName: "Волкова", avatarUrl: null },
 ];
 const makeEvent = (data: Partial<Event> & Pick<Event, "id" | "title" | "categoryId" | "cityId" | "startsAt" | "locationName">): Event => ({
-  description: null, endsAt: null, address: null, location: null, imageUrl: null, status: "active", participantsCount: 0,
+  description: null, endsAt: null, address: null, location: null, imageUrl: null, status: "active", moderationReason: null, participantsCount: 0,
   companiesCount: 0, creator: people[1], createdAt: "2026-09-01T12:00:00+03:00", updatedAt: "2026-09-22T12:00:00+03:00", ...data,
 });
 const initialEvents: Event[] = [
@@ -34,7 +46,7 @@ const initialEvents: Event[] = [
   makeEvent({ id: 5, title: "Большой городской бранч", description: "Дегустации, локальные проекты и разговоры за общим столом.", categoryId: 5, cityId: 4, startsAt: "2026-11-08T12:00:00+03:00", endsAt: "2026-11-08T18:00:00+03:00", locationName: "Дом Печати", address: "проспект Ленина, 49", location: { latitude: 56.8371, longitude: 60.6145, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&h=700&fit=crop&auto=format", participantsCount: 31, companiesCount: 3, creator: people[2] }),
   makeEvent({ id: 6, title: "Премьера и разговор с режиссёром", description: "Смотрим новую российскую драму, после — обсуждение с командой фильма.", categoryId: 6, cityId: 1, startsAt: "2026-11-16T19:30:00+03:00", endsAt: "2026-11-16T23:00:00+03:00", locationName: "Художественный", address: "Арбатская площадь, 14", location: { latitude: 55.7557, longitude: 37.6097, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&h=700&fit=crop&auto=format", participantsCount: 68, companiesCount: 7, creator: people[3] }),
 ];
-const company = (id: number, eventId: number, name: string, description: string, maxMembers: number, membersCount: number, joinType: "open" | "request", owner: UserShort): Company => ({ id, eventId, name, description, maxMembers, membersCount, joinType, owner, rules: null, status: "active", createdAt: "2026-09-04T10:00:00+03:00", updatedAt: "2026-09-20T10:00:00+03:00" });
+const company = (id: number, eventId: number, name: string, description: string, maxMembers: number, membersCount: number, joinType: "open" | "request", owner: UserShort): Company => ({ id, eventId, name, description, maxMembers, membersCount, joinType, owner, rules: null, minAge: null, maxAge: null, status: "active", createdAt: "2026-09-04T10:00:00+03:00", updatedAt: "2026-09-20T10:00:00+03:00" });
 const initialCompanies = [
   company(1, 1, "Продуктовые и без пафоса", "Идём на основные доклады, потом знакомиться на афтепати.", 6, 4, "open", people[1]),
   company(2, 1, "Frontend-завтрак", "Встречаемся за час до открытия и пьём кофе рядом.", 5, 3, "request", people[2]),
@@ -45,13 +57,13 @@ const initialCompanies = [
 
 type State = { user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]> };
 const storageKey = "poydem_mock_v1";
-const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [categories[0], categories[1], categories[5]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00" };
-const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00" };
+const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [interests[0], interests[2], interests[6]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00", gender: "male", birthDate: "1997-05-18" };
+const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00", gender: null, birthDate: null };
 const initialUsers: User[] = [
   demoUser,
-  { ...people[1], city: cities[1], about: "Организую встречи и конференции", interests: [categories[0]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-08-04T12:00:00+03:00" },
-  { ...people[2], city: cities[2], about: null, interests: [categories[3]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-08-22T12:00:00+03:00" },
-  { ...people[3], city: cities[0], about: "Музыка и современное искусство", interests: [categories[1], categories[2]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-09-10T12:00:00+03:00" },
+  { ...people[1], city: cities[1], about: "Организую встречи и конференции", interests: [interests[2]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-08-04T12:00:00+03:00", gender: "female", birthDate: "1993-10-12" },
+  { ...people[2], city: cities[2], about: null, interests: [interests[1]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-08-22T12:00:00+03:00", gender: "male", birthDate: "1999-03-08" },
+  { ...people[3], city: cities[0], about: "Музыка и современное искусство", interests: [interests[0], interests[3]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-09-10T12:00:00+03:00", gender: "female", birthDate: "1995-07-22" },
   adminUser,
 ];
 const initialReports: Report[] = [
@@ -73,12 +85,13 @@ const ageOf = (birthDate?: string | null) => { if (!birthDate) return null; cons
 const page = <T,>(items: T[], current = 1, limit = 20): Paginated<T> => ({ items, pagination: { page: current, limit, total: items.length, totalPages: items.length ? Math.ceil(items.length / limit) : 0 } });
 
 export const mockApi = {
-  async dictionaries() { await wait(); return { cities, categories, interests: categories }; },
+  async dictionaries() { await wait(); return { cities, categories, interests }; },
   async login(_provider: "google" | "telegram" | "vk") { await wait(); state.user = demoUser; persist(); return { accessToken: `mock.${demoUser.id}.${Date.now()}`, user: demoUser }; },
   async register(_provider: "google" | "telegram" | "vk") { await wait(); const user: User = { ...demoUser, id: 100, firstName: "", lastName: null, city: null, about: null, interests: [], isProfileComplete: false }; state.user = user; persist(); return { accessToken: `mock.${user.id}.${Date.now()}`, user }; },
   async registerWithPassword(username: string, password: string) { await wait(); const login = username.trim().toLocaleLowerCase(); if (login.length < 3) throw new ApiError("VALIDATION_ERROR", "Логин должен состоять минимум из 3 символов", 400); if (password.length < 8) throw new ApiError("VALIDATION_ERROR", "Пароль должен состоять минимум из 8 символов", 400); if (passwordAccounts.has(login)) throw new ApiError("USERNAME_TAKEN", "Этот логин уже занят", 409); const user: User = { ...demoUser, id: Date.now(), firstName: "", lastName: null, city: null, about: null, interests: [], isProfileComplete: false }; passwordAccounts.set(login, { password, user }); state.users.push(user); state.user = user; persist(); return { accessToken: `mock.${user.id}.${Date.now()}`, user }; },
   async loginWithPassword(username: string, password: string) { await wait(); if (username === "admin" && password === "poydem2026") { state.user = adminUser; persist(); return { accessToken: `mock.admin.${Date.now()}`, user: adminUser }; } const account = passwordAccounts.get(username.trim().toLocaleLowerCase()); if (!account || account.password !== password) throw new ApiError("INVALID_CREDENTIALS", "Неверный логин или пароль", 401); state.user = account.user; persist(); return { accessToken: `mock.${account.user.id}.${Date.now()}`, user: account.user }; },
   async uploadMyAvatar(file: File) { const user = requireUser(); await wait(); if (!file.type.startsWith("image/")) throw new ApiError("UNSUPPORTED_AVATAR_TYPE", "Выберите изображение", 415); if (file.size > 5_242_880) throw new ApiError("AVATAR_TOO_LARGE", "Размер изображения не должен превышать 5 МБ", 413); const avatarUrl = URL.createObjectURL(file); state.user = { ...user, avatarUrl }; state.users = state.users.map((item) => item.id === user.id ? state.user as User : item); persist(); return { avatarUrl }; },
+  async deleteMyAvatar() { const user = requireUser(); await wait(); state.user = { ...user, avatarUrl: null }; state.users = state.users.map((item) => item.id === user.id ? state.user as User : item); persist(); },
   async loginAdmin(username: string, password: string) {
     await wait();
     if (username !== "admin" || password !== "poydem2026") throw new ApiError("INVALID_CREDENTIALS", "Неверный логин или пароль", 401);
@@ -95,6 +108,11 @@ export const mockApi = {
     result.sort(filters.sort === "popular" ? (a, b) => b.participantsCount - a.participantsCount : (a, b) => a.startsAt.localeCompare(b.startsAt)); return page(result);
   },
   async getEvent(id: number) { await wait(); const item = state.events.find((event) => event.id === id); if (!item) throw new ApiError("EVENT_NOT_FOUND", "Мероприятие не найдено", 404); return item; },
+  async uploadEventCover(file: File) { await wait(); if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new ApiError("UNSUPPORTED_EVENT_COVER_TYPE", "Выберите JPG, PNG или WebP", 415); if (file.size > 10_485_760) throw new ApiError("EVENT_COVER_TOO_LARGE", "Размер обложки не должен превышать 10 МБ", 413); return { url: URL.createObjectURL(file) }; },
+  async createEvent(input: EventInput) { const user = requireUser(); await wait(); if (!input.title.trim() || !input.categoryId || !input.cityId || !input.locationName.trim()) throw new ApiError("VALIDATION_ERROR", "Заполните обязательные поля", 400, { fields: { title: ["Обязательное поле"] } }); const item: Event = { ...input, id: Date.now(), title: input.title.trim(), status: "pending", moderationReason: null, participantsCount: 0, companiesCount: 0, creator: user, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; state.events.push(item); persist(); return item; },
+  async updateOwnEvent(id: number, input: Partial<EventInput>) { const user = requireUser(); await wait(); const item = state.events.find((event) => event.id === id); if (!item) throw new ApiError("EVENT_NOT_FOUND", "Мероприятие не найдено", 404); if (item.creator.id !== user.id) throw new ApiError("EVENT_FORBIDDEN", "Можно редактировать только своё мероприятие", 403); Object.assign(item, input, { status: "pending", moderationReason: null, updatedAt: new Date().toISOString() }); persist(); return item; },
+  async deleteOwnEvent(id: number) { const user = requireUser(); await wait(); const index = state.events.findIndex((event) => event.id === id && event.creator.id === user.id); if (index < 0) throw new ApiError("EVENT_FORBIDDEN", "Можно удалить только своё мероприятие", 403); state.events.splice(index, 1); persist(); },
+  async listEventParticipants(id: number) { await wait(); const event = state.events.find((item) => item.id === id); if (!event) throw new ApiError("EVENT_NOT_FOUND", "Мероприятие не найдено", 404); const members = state.users.filter((user) => eventIdsFor(user.id).includes(id) || state.companies.some((company) => company.eventId === id && companyIdsFor(user.id).includes(company.id))); return page(members); },
   async listEventCompanies(eventId: number) { await wait(); return page(state.companies.filter((item) => item.eventId === eventId && item.status !== "blocked")); },
   async joinOpenCompany(companyId: number) {
     const user = requireUser(); await wait(); const item = state.companies.find((entry) => entry.id === companyId);
@@ -109,22 +127,25 @@ export const mockApi = {
   async createCompanyApplication(companyId: number, message: string | null) {
     const user = requireUser(); await wait(); const item = state.companies.find((entry) => entry.id === companyId);
     if (!item) throw new ApiError("COMPANY_NOT_FOUND", "Компания не найдена", 404);
+    const age = ageOf(user.birthDate); if ((item.minAge !== null || item.maxAge !== null) && (age === null || (item.minAge !== null && age < item.minAge) || (item.maxAge !== null && age > item.maxAge))) throw new ApiError("AGE_RESTRICTION", "Вы не подходите по возрастному ограничению этой компании", 403);
     if (state.applications.some((entry) => entry.companyId === companyId && entry.status === "pending")) throw new ApiError("APPLICATION_ALREADY_EXISTS", "Заявка уже отправлена", 409);
     const application: Application = { id: Date.now(), companyId, user, message, status: "pending", resolutionReason: null, createdAt: new Date().toISOString(), resolvedAt: null }; state.applications.push(application); persist(); return application;
   },
   async joinEventSolo(eventId: number) { const user = requireUser(); await wait(); if (eventIdsFor(user.id).includes(eventId)) throw new ApiError("ALREADY_EVENT_PARTICIPANT", "Вы уже идёте", 409); eventIdsFor(user.id).push(eventId); const item = state.events.find((entry) => entry.id === eventId); if (item) item.participantsCount += 1; persist(); return { status: 201 }; },
+  async cancelEventSolo(eventId: number) { const user = requireUser(); await wait(); const ids = eventIdsFor(user.id); const index = ids.indexOf(eventId); if (index < 0) throw new ApiError("NOT_SOLO_PARTICIPANT", "Вы не записаны на мероприятие самостоятельно", 409); ids.splice(index, 1); const item = state.events.find((entry) => entry.id === eventId); if (item) item.participantsCount = Math.max(0, item.participantsCount - 1); persist(); },
   async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) {
     const user = requireUser(); await wait(); if (!input.name.trim()) throw new ApiError("VALIDATION_ERROR", "Введите название", 400, { fields: { name: ["Обязательное поле"] } });
     const item = { ...company(Date.now(), eventId, input.name, input.description ?? "", input.maxMembers, 1, input.joinType, user), minAge: input.minAge ?? null, maxAge: input.maxAge ?? null }; state.companies.push(item); companyIdsFor(user.id).push(item.id); const event = state.events.find((entry) => entry.id === eventId); if (event) { event.companiesCount += 1; event.participantsCount += 1; } persist(); return item;
   },
-  async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { const user = requireUser(); await wait(); state.user = { ...user, ...input, city: input.cityId ? cities.find((city) => city.id === input.cityId) ?? user.city : user.city, interests: input.interestIds ? categories.filter((category) => input.interestIds?.includes(category.id)) : user.interests, isProfileComplete: Boolean((input.firstName ?? user.firstName) && (input.cityId ?? user.city?.id)) }; state.users = state.users.map((item) => item.id === state.user?.id ? state.user as User : item); persist(); return state.user; },
+  async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { const user = requireUser(); await wait(); state.user = { ...user, ...input, city: input.cityId ? cities.find((city) => city.id === input.cityId) ?? user.city : user.city, interests: input.interestIds ? interests.filter((interest) => input.interestIds?.includes(interest.id)) : user.interests, isProfileComplete: Boolean((input.firstName ?? user.firstName) && (input.cityId ?? user.city?.id)) }; state.users = state.users.map((item) => item.id === state.user?.id ? state.user as User : item); persist(); return state.user; },
   async listMyApplications() { await wait(); requireUser(); return page([...state.applications].reverse()); },
   async listCompanyApplications(companyId: number) { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); if (!company || company.owner.id !== user.id) throw new ApiError("FORBIDDEN", "Только создатель компании может просматривать заявки", 403); return page(state.applications.filter((item) => item.companyId === companyId)); },
-  async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); const application = state.applications.find((item) => item.id === applicationId && item.companyId === companyId); if (!company || company.owner.id !== user.id || !application) throw new ApiError("FORBIDDEN", "Действие недоступно", 403); if (application.status !== "pending") throw new ApiError("APPLICATION_ALREADY_RESOLVED", "Заявка уже обработана", 409); application.status = action === "approve" ? "approved" : "rejected"; application.resolvedAt = new Date().toISOString(); if (action === "approve") { company.membersCount += 1; companyIdsFor(application.user.id).push(companyId); } persist(); return application; },
+  async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); const application = state.applications.find((item) => item.id === applicationId && item.companyId === companyId); if (!company || company.owner.id !== user.id || !application) throw new ApiError("FORBIDDEN", "Действие недоступно", 403); if (application.status !== "pending") throw new ApiError("APPLICATION_ALREADY_RESOLVED", "Заявка уже обработана", 409); const applicant = state.users.find((item) => item.id === application.user.id); const age = ageOf(applicant?.birthDate); if (action === "approve" && ((company.minAge !== null || company.maxAge !== null) && (age === null || (company.minAge !== null && age < company.minAge) || (company.maxAge !== null && age > company.maxAge)))) throw new ApiError("AGE_RESTRICTION", "Заявитель больше не подходит по возрастному ограничению", 403); application.status = action === "approve" ? "approved" : "rejected"; application.resolvedAt = new Date().toISOString(); if (action === "approve") { company.membersCount += 1; companyIdsFor(application.user.id).push(companyId); } persist(); return application; },
   async listMyCompanies() { const user = requireUser(); await wait(); return page(state.companies.filter((item) => companyIdsFor(user.id).includes(item.id))); },
-  async listMyEvents() { const user = requireUser(); await wait(); const memberCompanyIds = companyIdsFor(user.id); const ids = new Set([...eventIdsFor(user.id), ...state.companies.filter((item) => memberCompanyIds.includes(item.id)).map((item) => item.eventId)]); return page(state.events.filter((item) => ids.has(item.id))); },
+  async listMyEvents() { const user = requireUser(); await wait(); const memberCompanyIds = companyIdsFor(user.id); const ids = new Set([...eventIdsFor(user.id), ...state.companies.filter((item) => memberCompanyIds.includes(item.id)).map((item) => item.eventId)]); return page(state.events.filter((item) => ids.has(item.id) || item.creator.id === user.id)); },
   async listCompanyMessages(companyId: number) { await wait(); requireUser(); return page(companyMessages.get(companyId) ?? []); },
   async sendCompanyMessage(companyId: number, text: string) { const user = requireUser(); await wait(); if (!text.trim()) throw new ApiError("VALIDATION_ERROR", "Введите сообщение", 400); const item: CompanyMessage = { id: Date.now(), companyId, author: user, text: text.trim(), createdAt: new Date().toISOString() }; companyMessages.set(companyId, [...(companyMessages.get(companyId) ?? []), item]); return item; },
+  async createReport(input: { targetType: "user" | "company" | "event"; targetId: number; reason: string; description: string | null }) { const user = requireUser(); await wait(); const item: Report = { ...input, id: Date.now(), author: user, status: "pending", resolvedBy: null, createdAt: new Date().toISOString(), resolvedAt: null }; state.reports.push(item); persist(); return item; },
   async getAdminDashboard() { await wait(); return { usersTotal: state.users.length, activeEvents: state.events.filter((item) => item.status === "active").length, pendingReports: state.reports.filter((item) => item.status === "pending").length, newRegistrations30d: state.users.filter((item) => item.id !== adminUser.id).length }; },
   async listAdminUsers(search = "") { await wait(); const query = search.toLocaleLowerCase("ru"); return page(state.users.filter((item) => `${item.firstName} ${item.lastName ?? ""}`.toLocaleLowerCase("ru").includes(query))); },
   async getAdminUser(id: number) { await wait(); const item = state.users.find((entry) => entry.id === id); if (!item) throw new ApiError("USER_NOT_FOUND", "Пользователь не найден", 404); return item; },

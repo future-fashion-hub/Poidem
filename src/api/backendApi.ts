@@ -1,7 +1,8 @@
-import type { Application, Company, CompanyMessage, DictionaryItem, Event, Paginated, Report, User } from "./types";
+import type { Application, Company, CompanyMessage, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
-const API_PREFIX = "/api/v1";
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
+const API_PREFIX = `${BACKEND_URL}/api/v1`;
 let accessToken: string | null = null;
 let refreshPromise: Promise<string> | null = null;
 
@@ -71,16 +72,24 @@ export const backendApi = {
   async registerWithPassword(username: string, password: string) { const result = await request<{ accessToken: string; user: User }>("/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }, false); accessToken = result.accessToken; return result; },
   async loginWithPassword(username: string, password: string) { const result = await request<{ accessToken: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }, false); accessToken = result.accessToken; return result; },
   async uploadMyAvatar(file: File) { const form = new FormData(); form.append("file", file); return request<{ avatarUrl: string }>("/users/me/avatar", { method: "POST", body: form }); },
+  async deleteMyAvatar() { return request<void>("/users/me/avatar", { method: "DELETE" }); },
   async logout() { await request<void>("/auth/logout", { method: "POST" }, false); accessToken = null; },
   async getCurrentUser() { if (!accessToken) await refresh(); return request<User>("/auth/me"); },
   async getUserProfile(id: number) { return request<User>(`/users/${id}`); },
   async listEvents(filters: EventFilters = {}) { return request<Paginated<Event>>(`/events${query({ ...filters, page: 1, limit: 100 })}`); },
   async getEvent(id: number) { return request<Event>(`/events/${id}`); },
+  async uploadEventCover(file: File) { const form = new FormData(); form.append("file", file); return request<{ url: string }>("/uploads/events", { method: "POST", body: form }); },
+  async createEvent(input: EventInput) { return request<Event>("/events", { method: "POST", body: JSON.stringify(input) }); },
+  async updateOwnEvent(id: number, input: Partial<EventInput>) { return request<Event>(`/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }); },
+  async deleteOwnEvent(id: number) { return request<void>(`/events/${id}`, { method: "DELETE" }); },
+  async listEventParticipants(id: number) { return request<Paginated<UserShort>>(`/events/${id}/participants?page=1&limit=20`); },
   async listEventCompanies(eventId: number) { return request<Paginated<Company>>(`/events/${eventId}/companies?page=1&limit=100`); },
   async joinOpenCompany(companyId: number) { return request<void>(`/companies/${companyId}/join`, { method: "POST" }); },
   async createCompanyApplication(companyId: number, message: string | null) { return request<Application>(`/companies/${companyId}/applications`, { method: "POST", body: JSON.stringify({ message }) }); },
   async joinEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "POST" }); },
+  async cancelEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "DELETE" }); },
   async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
+  async createReport(input: { targetType: "user" | "company" | "event"; targetId: number; reason: string; description: string | null }) { return request<Report>("/reports", { method: "POST", body: JSON.stringify(input) }); },
   async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { return request<User>("/users/me", { method: "PATCH", body: JSON.stringify(input) }); },
   async listMyApplications() { return request<Paginated<Application>>("/users/me/applications?page=1&limit=100"); },
   async listCompanyApplications(companyId: number) { return request<Paginated<Application>>(`/companies/${companyId}/applications?status=pending&page=1&limit=100`); },
@@ -89,10 +98,11 @@ export const backendApi = {
   async listMyEvents() { return request<Paginated<Event>>("/users/me/events?status=upcoming&page=1&limit=100"); },
   async listCompanyMessages(companyId: number) { return request<Paginated<CompanyMessage>>(`/companies/${companyId}/messages?page=1&limit=100`); },
   async sendCompanyMessage(companyId: number, text: string) { return request<CompanyMessage>(`/companies/${companyId}/messages`, { method: "POST", body: JSON.stringify({ text }) }); },
-  async loginAdmin(_username: string, _password: string) {
-    const user = await this.getCurrentUser();
+  async loginAdmin(username: string, password: string) {
+    const result = await this.loginWithPassword(username, password);
+    const { user } = result;
     if (user.role !== "admin") throw new ApiError("FORBIDDEN", "У этой учётной записи нет прав администратора", 403);
-    return { accessToken: accessToken ?? "", user };
+    return result;
   },
   async getAdminDashboard() { return request<{ usersTotal: number; activeEvents: number; pendingReports: number; newRegistrations30d: number }>("/admin/dashboard"); },
   async listAdminUsers(_search = "") { return request<Paginated<User>>("/admin/users?page=1&limit=100"); },
