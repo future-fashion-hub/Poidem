@@ -62,7 +62,7 @@ function StatusChip({ status }: { status: string }) {
   return <Chip size="small" color={statusColors[status] ?? "default"} label={statusLabels[status] ?? status} variant={status === "active" ? "filled" : "outlined"} />;
 }
 
-function RowAction({ resource, nextStatus, label, color = "primary", confirmText }: { resource: string; nextStatus: string; label: string; color?: "primary" | "error" | "success"; confirmText?: string }) {
+function RowAction({ resource, nextStatus, label, color = "primary", confirmText, moderation = false, requiresReason = false }: { resource: string; nextStatus: string; label: string; color?: "primary" | "error" | "success"; confirmText?: string; moderation?: boolean; requiresReason?: boolean }) {
   const record = useRecordContext<RaRecord>();
   const notify = useNotify();
   const refresh = useRefresh();
@@ -71,9 +71,11 @@ function RowAction({ resource, nextStatus, label, color = "primary", confirmText
   if (!record) return null;
   const run = async () => {
     if (confirmText && !window.confirm(confirmText)) return;
+    const reason = requiresReason ? window.prompt("Укажите причину (обязательное поле):")?.trim() : undefined;
+    if (requiresReason && !reason) return;
     setIsPending(true);
     try {
-      await dataProvider.update(resource, { id: record.id, data: { ...record, status: nextStatus }, previousData: record });
+      await dataProvider.update(resource, { id: record.id, data: { ...record, status: nextStatus, ...(moderation ? { _moderation: true, moderationReason: reason } : {}) }, previousData: record });
       notify("Изменения сохранены", { type: "success" });
       refresh();
     } catch (error) {
@@ -96,8 +98,8 @@ function UserActions() {
 function EventActions() {
   const record = useRecordContext<Event>();
   if (!record) return null;
-  if (record.status === "pending") return <Stack direction="row"><RowAction resource="events" nextStatus="active" label="Одобрить" color="success" /><RowAction resource="events" nextStatus="rejected" label="Отклонить" color="error" confirmText="Отклонить мероприятие?" /></Stack>;
-  if (record.status === "active") return <RowAction resource="events" nextStatus="blocked" label="Заблокировать" color="error" confirmText="Заблокировать мероприятие?" />;
+  if (record.status === "pending") return <Stack direction="row"><RowAction resource="events" nextStatus="active" label="Одобрить" color="success" moderation /><RowAction resource="events" nextStatus="rejected" label="Отклонить" color="error" confirmText="Отклонить мероприятие?" moderation requiresReason /></Stack>;
+  if (record.status === "active") return <RowAction resource="events" nextStatus="blocked" label="Заблокировать" color="error" confirmText="Заблокировать мероприятие?" moderation requiresReason />;
   return <Typography variant="caption" color="text.secondary">Действий нет</Typography>;
 }
 

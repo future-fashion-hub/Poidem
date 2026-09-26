@@ -59,9 +59,15 @@ async function getAll(resource: string, filter: Record<string, unknown> = {}): P
   throw new Error(`Неизвестный ресурс: ${resource}`);
 }
 
-async function updateResource(resource: string, id: string | number, data: Partial<AdminResource>): Promise<RaRecord> {
+type AdminMutation = Partial<AdminResource> & { _moderation?: boolean; moderationReason?: string | null };
+
+async function updateResource(resource: string, id: string | number, data: AdminMutation): Promise<RaRecord> {
   if (resource === "users") return await mockApi.setAdminUserStatus(Number(id), (data as User).status) as unknown as RaRecord;
-  if (resource === "events") return await mockApi.updateAdminEvent(Number(id), data as Partial<Event>) as unknown as RaRecord;
+  if (resource === "events") {
+    if (data._moderation) return await mockApi.moderateAdminEvent(Number(id), (data as Event).status, data.moderationReason ?? undefined) as unknown as RaRecord;
+    const { _moderation: _ignored, moderationReason: _reason, status: _status, ...eventPatch } = data;
+    return await mockApi.updateAdminEvent(Number(id), eventPatch as Partial<Event>) as unknown as RaRecord;
+  }
   if (resource === "companies") return await mockApi.blockAdminCompany(Number(id)) as unknown as RaRecord;
   if (resource === "reports") return await mockApi.moderateAdminReport(Number(id), (data as Report).status as "resolved" | "rejected") as unknown as RaRecord;
   throw new Error(`Изменение ресурса ${resource} не поддерживается`);

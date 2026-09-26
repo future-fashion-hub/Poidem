@@ -110,7 +110,7 @@ export const backendApi = {
   async setAdminUserStatus(id: number, status: User["status"]) { return request<User>(`/admin/users/${id}/${status === "banned" ? "ban" : "unban"}`, { method: "POST" }); },
   async listAdminEvents(_search = "", status?: Event["status"]) { return request<Paginated<Event>>(`/admin/events${query({ status, page: 1, limit: 100 })}`); },
   async updateAdminEvent(id: number, input: Partial<Event>) { return request<Event>(`/admin/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }); },
-  async moderateAdminEvent(id: number, status: Event["status"]) { const action = status === "active" ? "approve" : status === "blocked" ? "block" : "reject"; return request<Event>(`/admin/events/${id}/${action}`, { method: "POST" }); },
+  async moderateAdminEvent(id: number, status: Event["status"], reason?: string) { const action = status === "active" ? "approve" : status === "blocked" ? "block" : "reject"; return request<Event>(`/admin/events/${id}/${action}`, { method: "POST", body: reason ? JSON.stringify({ reason }) : undefined }); },
   async listAdminCompanies() { return request<Paginated<Company>>("/admin/companies?page=1&limit=100"); },
   async blockAdminCompany(id: number) { return request<Company>(`/admin/companies/${id}/block`, { method: "POST" }); },
   async listAdminReports(status?: Report["status"]) { return request<Paginated<Report>>(`/admin/reports${query({ status, page: 1, limit: 100 })}`); },
