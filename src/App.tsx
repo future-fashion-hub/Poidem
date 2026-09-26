@@ -12,6 +12,12 @@ import { ADMIN_SESSION_KEY } from "./admin/adminSession";
 type View = "home" | "map" | "profile" | "chats";
 type Notice = { kind: "success" | "error"; text: string } | null;
 type IconName = "search" | "pin" | "users" | "close" | "arrow" | "check" | "plus" | "sliders";
+const publicViews: View[] = ["home", "map", "profile", "chats"];
+
+function currentViewFromUrl(): View {
+  const value = window.location.hash.replace(/^#\/?/, "") as View;
+  return publicViews.includes(value) ? value : "home";
+}
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -30,7 +36,7 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ru-RU", { day: "nu
 const mockApi = api;
 
 export default function App() {
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>(currentViewFromUrl);
   const [user, setUser] = useState<User | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [cities, setCities] = useState<DictionaryItem[]>([]);
@@ -66,6 +72,17 @@ export default function App() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [search, cityId, categoryId, sort]);
+
+  useEffect(() => {
+    const syncViewFromUrl = () => setView(currentViewFromUrl());
+    window.addEventListener("hashchange", syncViewFromUrl);
+    return () => window.removeEventListener("hashchange", syncViewFromUrl);
+  }, []);
+
+  useEffect(() => {
+    const hash = view === "home" ? "" : `#${view}`;
+    if (window.location.hash !== hash) window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
+  }, [view]);
 
   const openEvent = async (event: Event) => {
     setSelected(event); setCompanies([]);
