@@ -40,6 +40,16 @@ body {
 
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
+button, a, input, select, textarea { transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(189, 242, 56, .8);
+  outline-offset: 3px;
+}
+
+.feed-page {
+  min-height: calc(100vh - 72px);
+  background-image: radial-gradient(circle at 10% 12%, rgba(189, 242, 56, .18), transparent 20rem), radial-gradient(circle at 90% 72%, rgba(105, 145, 111, .12), transparent 22rem);
+}
 
 .event-map { position: relative; z-index: 0; }
 .event-map .leaflet-control-zoom a { color: #102318; }

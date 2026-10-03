@@ -6,6 +6,14 @@ const API_PREFIX = `${BACKEND_URL}/api/v1`;
 let accessToken: string | null = null;
 let refreshPromise: Promise<string> | null = null;
 
+// Browsers cannot attach an Authorization header during the WebSocket handshake.
+// The backend must validate this short-lived token from the query string.
+export async function getChatAccessToken() {
+  if (!accessToken) await refresh();
+  if (!accessToken) throw new ApiError("UNAUTHORIZED", "Сначала войдите в аккаунт", 401);
+  return accessToken;
+}
+
 type EventFilters = { search?: string; cityId?: number; categoryId?: number; sort?: string };
 
 function query(params: Record<string, string | number | undefined>) {
