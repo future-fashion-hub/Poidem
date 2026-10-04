@@ -10,14 +10,28 @@ type EventMapProps = {
 };
 
 function markerIcon(event: Event) {
-  const fallback = event.title.slice(0, 1).toUpperCase();
-  const image = event.imageUrl
-    ? `<img src="${event.imageUrl}" alt="" />`
-    : `<span>${fallback}</span>`;
+  const pin = document.createElement("div");
+  pin.className = "event-map-pin";
+  const cover = document.createElement("div");
+  cover.className = "event-map-pin-image";
+  const fallback = () => { cover.textContent = event.title.slice(0, 1).toUpperCase(); };
+  if (event.imageUrl) {
+    const image = document.createElement("img");
+    // Use the exact cover URL from the event, shared with its detail card.
+    image.src = event.imageUrl;
+    image.alt = event.title;
+    image.width = 32;
+    image.height = 32;
+    image.addEventListener("error", fallback, { once: true });
+    cover.append(image);
+  } else {
+    fallback();
+  }
+  pin.append(cover);
 
   return divIcon({
     className: "event-map-marker-wrapper",
-    html: `<div class="event-map-pin"><div class="event-map-pin-image">${image}</div></div>`,
+    html: pin,
     iconSize: [68, 68],
     iconAnchor: [34, 66],
     tooltipAnchor: [0, -62],
@@ -68,6 +82,5 @@ export default function EventMap({ events, onSelect }: EventMapProps) {
         </Marker>;
       })}
     </MapContainer>
-    <p className="pointer-events-none absolute bottom-4 left-1/2 z-[500] -translate-x-1/2 rounded-full bg-[#102318]/90 px-3 py-1.5 text-center text-[10px] font-bold text-white/90 shadow-lg backdrop-blur">Приближайте карту и выбирайте мероприятие</p>
   </div>;
 }

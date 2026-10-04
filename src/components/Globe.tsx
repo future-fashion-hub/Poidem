@@ -42,24 +42,25 @@ export default function Globe() {
     globe.pointOfView(STARTING_VIEW, 0);
   }, []);
 
-  return <div ref={containerRef} className="relative mx-auto aspect-square w-full max-w-[540px] select-none" aria-label="Интерактивный глобус">
-    <ReactGlobe
-      ref={globeRef}
-      width={dimensions.width}
-      height={dimensions.height}
-      backgroundColor="rgba(0,0,0,0)"
-      showGraticules
-      showAtmosphere
-      atmosphereColor="#8ee8ad"
-      atmosphereAltitude={0.18}
-      polygonsData={countries}
-      polygonAltitude={0.008}
-      polygonCapColor={() => "rgba(41, 104, 65, 0.88)"}
-      polygonSideColor={() => "rgba(9, 35, 21, 0.92)"}
-      polygonStrokeColor={() => "rgba(179, 255, 199, 0.28)"}
-      polygonsTransitionDuration={0}
-      onGlobeReady={configureGlobe}
-    />
-    <p className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-[#0d2818]/80 px-3 py-1.5 text-[10px] font-semibold text-white/75 shadow-lg backdrop-blur">Вращайте глобус</p>
+  return <div ref={containerRef} className="globe-stage relative mx-auto aspect-square w-full max-w-[540px] select-none" aria-label="Интерактивный глобус">
+    <div className="globe-aura" aria-hidden="true"/>
+    <div className="relative z-10">
+      <ReactGlobe
+        ref={globeRef}
+        width={dimensions.width}
+        height={dimensions.height}
+        backgroundColor="rgba(0,0,0,0)"
+        showGraticules
+        // Render the halo in CSS so it can fade beyond the canvas edges.
+        showAtmosphere={false}
+        polygonsData={countries}
+        polygonAltitude={0.008}
+        polygonCapColor={() => "rgba(41, 104, 65, 0.88)"}
+        polygonSideColor={() => "rgba(9, 35, 21, 0.92)"}
+        polygonStrokeColor={() => "rgba(179, 255, 199, 0.28)"}
+        polygonsTransitionDuration={0}
+        onGlobeReady={configureGlobe}
+      />
+    </div>
   </div>;
 }

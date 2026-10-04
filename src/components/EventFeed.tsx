@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DictionaryItem, Event } from "../api/types";
 
 type FeedAction = "skip" | "save";
@@ -7,46 +9,217 @@ type ActionRecord = Record<number, FeedAction>;
 const storageKey = "poidem-event-feed-actions";
 
 function readActions(): ActionRecord {
-  try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); } catch { return {}; }
+  try {
+    const value = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter(([, action]) => action === "skip" || action === "save")) as ActionRecord;
+  } catch { return {}; }
 }
-
-function saveActions(next: ActionRecord) { localStorage.setItem(storageKey, JSON.stringify(next)); }
+function saveActions(next: ActionRecord) {
+  try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Keep the current session usable when storage is unavailable. */ }
+}
+function FeedIcon({ name, size = 24 }: { name: "spark" | "close" | "heart" | "check" | "undo"; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {name === "close" ? <path d="m6 6 12 12M18 6 6 18"/> :
+      name === "heart" ? <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z"/> :
+      name === "check" ? <path d="m5 12 4 4L19 6"/> :
+      name === "undo" ? <path d="M4 10h10a6 6 0 0 1 0 12M4 10l5-5M4 10l5 5"/> :
+      <path d="m12 2 1.6 6.4L20 10l-6.4 1.6L12 18l-1.6-6.4L4 10l6.4-1.6L12 2Z"/>}
+  </svg>;
+}
 
 export default function EventFeed({ events, categories, cities, onOpen }: Props) {
   const [actions, setActions] = useState<ActionRecord>(readActions);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [drag, setDrag] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [exit, setExit] = useState<FeedAction | null>(null);
   const [lastAction, setLastAction] = useState<{ id: number; action: FeedAction } | null>(null);
-  const startX = useRef<number | null>(null);
-  const activeEvents = useMemo(() => events.filter((event) => event.status === "active" && (categoryId === null || event.categoryId === categoryId)), [categoryId, events]);
-  const queue = useMemo(() => activeEvents.filter((event) => !actions[event.id]), [actions, activeEvents]);
+  const [announcement, setAnnouncement] = useState("");
+  const gesture = useRef<{ id: number; x: number; y: number; dx: number; axis: "x" | "y" | null } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const busy = useRef(false);
+  const pageRef = useRef<HTMLElement>(null);
+  const effectRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    const effect = effectRef.current;
+    if (!page || !effect) return;
+    const header = document.querySelector(".site-header");
+    const footer = page.querySelector(".swipe-help");
+    let frame = 0;
+    const updateBounds = () => {
+      const top = Math.max(0, page.getBoundingClientRect().top, header?.getBoundingClientRect().bottom ?? 0);
+      const bottom = Math.min(window.innerHeight, footer?.getBoundingClientRect().top ?? page.getBoundingClientRect().bottom);
+      effect.style.top = `${top}px`;
+      effect.style.height = `${Math.max(0, bottom - top)}px`;
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateBounds);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(page);
+    if (header) observer.observe(header);
+    if (footer) observer.observe(footer);
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    updateBounds();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
+  const activeEvents = useMemo(() => events.filter(item => item.status === "active" && (categoryId === null || item.categoryId === categoryId)), [events, categoryId]);
+  const queue = useMemo(() => activeEvents.filter(item => !actions[item.id]), [actions, activeEvents]);
   const event = queue[0];
-  const savedCount = Object.values(actions).filter((item) => item === "save").length;
-  const progress = activeEvents.length ? Math.round(((activeEvents.length - queue.length) / activeEvents.length) * 100) : 0;
-  const category = event && categories.find((item) => item.id === event.categoryId)?.name;
-  const city = event && cities.find((item) => item.id === event.cityId)?.name;
-  const date = event && new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt));
+  const savedCount = Object.values(actions).filter(item => item === "save").length;
+  const progress = activeEvents.length ? (activeEvents.length - queue.length) / activeEvents.length : 0;
+  const category = categories.find(item => item.id === event?.categoryId)?.name ?? "Событие";
+  const city = cities.find(item => item.id === event?.cityId)?.name;
+  const date = event ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt)) : "";
+  const strength = Math.min(Math.abs(drag) / 110, 1);
+  const red = exit === "skip" ? 1 : drag < 0 ? strength : 0;
+  const green = exit === "save" ? 1 : drag > 0 ? strength : 0;
 
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const cancelDrag = () => { gesture.current = null; setDragging(false); setDrag(0); };
   const act = (action: FeedAction) => {
-    if (!event) return;
-    const next = { ...actions, [event.id]: action };
-    setActions(next); saveActions(next); setLastAction({ id: event.id, action }); setDrag(0);
+    if (!event || busy.current) return;
+    busy.current = true;
+    const id = event.id;
+    const title = event.title;
+    gesture.current = null;
+    setDragging(false);
+    setExit(action);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    timer.current = setTimeout(() => {
+      setActions(previous => {
+        const next = { ...previous, [id]: action };
+        saveActions(next);
+        return next;
+      });
+      setLastAction({ id, action });
+      setAnnouncement(action === "save" ? `«${title}» сохранено в подборке` : `«${title}» пропущено`);
+      setDrag(0);
+      setExit(null);
+      busy.current = false;
+      timer.current = null;
+    }, reduced ? 0 : 320);
   };
   const undo = () => {
-    if (!lastAction) return;
-    const next = { ...actions }; delete next[lastAction.id]; setActions(next); saveActions(next); setLastAction(null);
+    if (!lastAction || busy.current) return;
+    cancelDrag();
+    setActions(previous => {
+      const next = { ...previous };
+      delete next[lastAction.id];
+      saveActions(next);
+      return next;
+    });
+    setLastAction(null);
+    setAnnouncement("Последний выбор отменён");
   };
-  const reset = () => { localStorage.removeItem(storageKey); setActions({}); setLastAction(null); };
-  const endDrag = () => { if (Math.abs(drag) > 82) act(drag > 0 ? "save" : "skip"); else setDrag(0); startX.current = null; };
+  const reset = () => {
+    if (busy.current) return;
+    cancelDrag();
+    setActions({}); saveActions({}); setLastAction(null);
+  };
+  const chooseCategory = (id: number | null) => {
+    if (busy.current) return;
+    cancelDrag(); setCategoryId(id);
+  };
+  const pointerDown = (pointer: ReactPointerEvent<HTMLElement>) => {
+    if ((pointer.target as HTMLElement).closest("button")) return;
+    if (busy.current || !pointer.isPrimary || pointer.button !== 0) return;
+    gesture.current = { id: pointer.pointerId, x: pointer.clientX, y: pointer.clientY, dx: 0, axis: null };
+    pointer.currentTarget.setPointerCapture(pointer.pointerId);
+  };
+  const pointerMove = (pointer: ReactPointerEvent<HTMLElement>) => {
+    const current = gesture.current;
+    if (!current || current.id !== pointer.pointerId) return;
+    const dx = pointer.clientX - current.x;
+    const dy = pointer.clientY - current.y;
+    if (!current.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 8) current.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    if (current.axis !== "x") return;
+    current.dx = dx;
+    setDragging(true);
+    setDrag(Math.max(-180, Math.min(180, dx)));
+  };
+  const pointerUp = (pointer: ReactPointerEvent<HTMLElement>) => {
+    const current = gesture.current;
+    if (!current || current.id !== pointer.pointerId) return;
+    const threshold = Math.min(100, pointer.currentTarget.clientWidth * .24);
+    if (current.axis === "x" && Math.abs(current.dx) >= threshold) act(current.dx > 0 ? "save" : "skip");
+    else cancelDrag();
+  };
   useEffect(() => {
     const handleKey = (keyboard: KeyboardEvent) => {
-      if ((keyboard.target as HTMLElement)?.tagName === "INPUT") return;
-      if (keyboard.key === "ArrowLeft") act("skip");
-      if (keyboard.key === "ArrowRight") act("save");
-      if (keyboard.key === "z" && (keyboard.metaKey || keyboard.ctrlKey)) undo();
+      const target = keyboard.target as HTMLElement;
+      if (keyboard.repeat || keyboard.ctrlKey || keyboard.metaKey || keyboard.altKey || target.closest("input, textarea, select, button, a, [contenteditable], [role=dialog]")) return;
+      // The event drawer is rendered outside this component. Do not swipe behind it.
+      if (document.querySelector(".fixed.inset-0")) return;
+      if (keyboard.key === "ArrowLeft" || keyboard.key === "ArrowRight") {
+        keyboard.preventDefault();
+        act(keyboard.key === "ArrowLeft" ? "skip" : "save");
+      }
     };
-    window.addEventListener("keydown", handleKey); return () => window.removeEventListener("keydown", handleKey);
-  }, [event, actions, lastAction]);
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [event, exit]);
 
-  return <main className="feed-page mx-auto max-w-[1240px] px-5 py-10 lg:px-8"><div className="mx-auto max-w-[620px]"><header className="mb-6 rounded-[30px] border border-[#d9e7d4] bg-white/80 p-5 text-center shadow-[0_14px_45px_rgba(35,65,42,.06)] backdrop-blur sm:p-6"><div className="flex items-center justify-between gap-4"><div className="text-left"><p className="text-xs font-black uppercase tracking-[.18em] text-[#638568]">Быстрый выбор</p><h1 className="mt-1 text-3xl font-black tracking-[-.055em] sm:text-4xl">Лента событий</h1></div><div className="rounded-2xl bg-[#eff9db] px-3 py-2 text-right"><b className="block text-lg leading-none text-[#244d2f]">{savedCount}</b><span className="text-[10px] font-bold uppercase tracking-wide text-[#64806a]">сохранено</span></div></div><div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[#e6eee4]"><div className="h-full rounded-full bg-[#a8db37] transition-all duration-300" style={{ width: `${progress}%` }}/></div><p className="mt-2 text-left text-xs font-medium text-[#718075]">{queue.length ? `Осталось ${queue.length} ${queue.length === 1 ? "событие" : "событий"}` : "В этой подборке всё просмотрено"}</p></header><div className="mb-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]"><button onClick={() => setCategoryId(null)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${categoryId === null ? "bg-[#102318] text-[#dff8a1] shadow-sm" : "border border-[#d7e3d4] bg-white text-[#59705d] hover:border-[#9eb99e]"}`}>Все</button>{categories.map((item) => <button key={item.id} onClick={() => setCategoryId(item.id)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${categoryId === item.id ? "bg-[#102318] text-[#dff8a1] shadow-sm" : "border border-[#d7e3d4] bg-white text-[#59705d] hover:border-[#9eb99e]"}`}>{item.name}</button>)}</div>{event ? <><div className="relative select-none" onPointerDown={(item) => { startX.current = item.clientX; item.currentTarget.setPointerCapture(item.pointerId); }} onPointerMove={(item) => { if (startX.current !== null) setDrag(Math.max(-145, Math.min(145, item.clientX - startX.current))); }} onPointerUp={endDrag} onPointerCancel={endDrag}><div className="pointer-events-none absolute left-5 top-5 z-10 rounded-xl border-2 border-[#b44d43] bg-white/90 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-[#a9433a] shadow-sm" style={{ opacity: Math.max(0, -drag / 72) }}>Не моё</div><div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border-2 border-[#598b2e] bg-white/90 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-[#4f7d2a] shadow-sm" style={{ opacity: Math.max(0, drag / 72) }}>Сохранить</div><article className="overflow-hidden rounded-[34px] border border-[#d7e4d4] bg-white shadow-[0_24px_70px_rgba(35,65,42,.16)] transition-transform duration-200" style={{ transform: `translateX(${drag}px) rotate(${drag / 19}deg)` }}><div className="relative h-[320px] bg-[#e7f0e3] sm:h-[350px]">{event.imageUrl ? <img src={event.imageUrl} alt="" draggable={false} className="h-full w-full object-cover"/> : <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_30%_20%,#dff8a1,transparent_35%),linear-gradient(135deg,#345d3c,#102318)] text-6xl text-[#dff8a1]">✦</div>}<div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#102318]/75 to-transparent"/><span className="absolute bottom-4 left-4 rounded-full bg-white/95 px-3 py-1.5 text-xs font-black text-[#27452e] shadow-sm">{category ?? "Событие"}</span></div><div className="p-6"><p className="text-xs font-bold uppercase tracking-[.1em] text-[#6d8870]">{date} · {city}</p><h2 className="mt-2 text-2xl font-black tracking-[-.045em]">{event.title}</h2><p className="mt-3 min-h-[48px] text-sm leading-6 text-[#627466]">{event.description || event.locationName}</p><div className="mt-5 flex items-center justify-between border-t border-[#edf1ea] pt-4 text-xs font-bold text-[#647668]"><span>{event.participantsCount} уже планируют</span><span>{event.companiesCount} компаний</span></div></div></article></div><div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3"><button onClick={() => act("skip")} className="justify-self-end grid h-14 w-14 place-items-center rounded-2xl border border-[#edc2bc] bg-white text-2xl font-bold text-[#a9433a] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" aria-label="Пропустить событие">×</button><button onClick={() => onOpen(event)} className="rounded-xl bg-[#102318] px-5 py-3 text-sm font-extrabold text-[#dff8a1] shadow-sm transition hover:bg-[#1c3c27]">Подробнее</button><button onClick={() => act("save")} className="grid h-14 w-14 place-items-center rounded-2xl bg-[#bdf238] text-xl font-black text-[#102318] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" aria-label="Сохранить событие">♥</button></div><div className="mt-4 flex items-center justify-center gap-2"><span className="text-xs text-[#829084]">← пропустить · сохранить →</span>{lastAction ? <button onClick={undo} className="rounded-lg px-2 py-1 text-xs font-bold text-[#476d4d] underline decoration-[#a8db37] underline-offset-4">Отменить</button> : null}</div></> : <section className="rounded-[34px] border border-dashed border-[#b9cfb8] bg-white px-7 py-20 text-center shadow-sm"><div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-[#e8f3db] text-3xl">✓</div><h2 className="mt-5 text-2xl font-black">Лента просмотрена</h2><p className="mt-3 text-sm leading-6 text-[#718075]">Вы отметили все события этой подборки. Можно сменить категорию или начать заново.</p><button onClick={reset} className="mt-6 rounded-xl bg-[#102318] px-5 py-3 text-sm font-extrabold text-[#dff8a1] transition hover:bg-[#1c3c27]">Показать снова</button></section>}</div></main>;
+  return <main ref={pageRef} className="feed-page discovery-feed">
+    <div ref={effectRef} className="swipe-viewport" aria-hidden="true">
+      <div className="swipe-ambient swipe-ambient--skip" style={{ opacity: red }}/>
+      <div className="swipe-ambient swipe-ambient--save" style={{ opacity: green }}/>
+    </div>
+    <div className="discovery-content">
+      <header className="discovery-heading">
+        <div><p className="discovery-eyebrow">Планы по настроению</p><h1>А что, если пойти<span>?</span></h1><p className="discovery-intro">Листайте события. Сохраняйте то, что откликается.</p></div>
+        <div className="discovery-counter" role="img" aria-label={`Сохранено событий: ${savedCount}`} title={`Сохранено событий: ${savedCount}`}>
+          <FavoriteRounded aria-hidden="true"/>
+          <b aria-hidden="true">{savedCount > 99 ? "99+" : savedCount}</b>
+        </div>
+      </header>
+      <div className="discovery-categories" aria-label="Категории событий">
+        <button disabled={!!exit} aria-pressed={categoryId === null} onClick={() => chooseCategory(null)}>Все события</button>
+        {categories.map(item => <button key={item.id} disabled={!!exit} aria-pressed={categoryId === item.id} onClick={() => chooseCategory(item.id)}>{item.name}</button>)}
+      </div>
+      <div className="discovery-progress"><span>Осталось: {queue.length}</span><div role="progressbar" aria-label="Просмотрено событий" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}><i style={{ transform: `scaleX(${progress})` }}/></div></div>
+      {event ? <>
+        <div className="swipe-deck">
+          {queue.length > 1 && <div className="swipe-underlay" aria-hidden="true"/>}
+          <div key={event.id} className="swipe-arrival">
+            <article className={`swipe-card ${dragging ? "is-dragging" : ""} ${exit ? `is-exiting-${exit}` : ""}`}
+              style={!exit ? { transform: `translateX(${drag}px) rotate(${drag / 22}deg)` } : undefined}
+              onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}
+              onPointerCancel={cancelDrag} onLostPointerCapture={() => { if (gesture.current) cancelDrag(); }}>
+              <div className="swipe-artwork">
+                {event.imageUrl ? <img src={event.imageUrl} alt="" draggable={false}/> : <div className="swipe-placeholder"><FeedIcon name="spark" size={64}/></div>}
+                <div className="swipe-artwork-shade"/>
+                <span className="swipe-category">{category}</span>
+                <span className="swipe-date">{date}</span>
+                <div className="swipe-title"><p>{city || "Откройте новое место"}</p><h2><button className="swipe-title-link" disabled={!!exit} onClick={() => onOpen(event)} aria-label={`Открыть событие: ${event.title}`}>{event.title}</button></h2></div>
+              </div>
+              <div className="swipe-details">
+                <p className="swipe-location">{event.locationName}</p>
+                <p className="swipe-description">{event.description || "Откройте событие, чтобы узнать подробности и найти компанию."}</p>
+                <div className="swipe-social"><span><b>{event.participantsCount}</b> планируют пойти</span><span><b>{event.companiesCount}</b> компаний</span></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </> : <section className="discovery-empty"><FeedIcon name="check" size={40}/><h2>{activeEvents.length ? "Все планы просмотрены" : "Пока нет событий"}</h2><p>{activeEvents.length ? "Попробуйте другую категорию или вернитесь к началу подборки." : "Выберите другую категорию — возможно, ваш план уже там."}</p>{activeEvents.length > 0 && <button onClick={reset}>Посмотреть заново</button>}</section>}
+      <div className="swipe-actions">
+        {event && <>
+          <button className="swipe-action swipe-action--skip" disabled={!!exit} onClick={() => act("skip")}><FeedIcon name="close"/><span>Пропустить</span></button>
+          <button className="swipe-action swipe-action--save" disabled={!!exit} onClick={() => act("save")}><FeedIcon name="heart"/><span>Сохранить</span></button>
+        </>}
+        <button className="swipe-action swipe-action--undo" onClick={undo} disabled={!lastAction || !!exit}><FeedIcon name="undo" size={19}/><span>Отменить выбор</span></button>
+      </div>
+      <footer className="swipe-help"><span>Влево — пропустить · вправо — сохранить</span><small>Сохранение в подборке не записывает вас на мероприятие.</small></footer>
+      <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+    </div>
+  </main>;
 }

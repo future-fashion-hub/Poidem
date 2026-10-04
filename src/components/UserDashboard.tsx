@@ -1,4 +1,10 @@
 import ForumOutlined from "@mui/icons-material/ForumOutlined"
+import PersonOutline from "@mui/icons-material/PersonOutline"
+import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined"
+import GroupsOutlined from "@mui/icons-material/GroupsOutlined"
+import NotificationsNoneOutlined from "@mui/icons-material/NotificationsNoneOutlined"
+import ArrowOutward from "@mui/icons-material/ArrowOutward"
+import EditOutlined from "@mui/icons-material/EditOutlined"
 import { useEffect, useState } from "react"
 import { api } from "../api"
 import type {
@@ -27,6 +33,7 @@ const tabs: Array<[Tab, string]> = [
   ["companies", "Мои компании"],
   ["applications", "Заявки"],
 ]
+const tabIcons = { profile: PersonOutline, events: CalendarMonthOutlined, companies: GroupsOutlined, applications: NotificationsNoneOutlined }
 const eventLabels: Record<Event["status"], string> = {
   pending: "На модерации",
   active: "Активно",
@@ -56,7 +63,10 @@ export default function UserDashboard({
   const [applications, setApplications] = useState<Application[]>([])
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
   const load = async () => {
+    setError("")
     try {
       const [a, b, c] = await Promise.all([
         api.listMyEvents(),
@@ -70,195 +80,76 @@ export default function UserDashboard({
       setError(
         caught instanceof Error ? caught.message : "Не удалось обновить данные",
       )
+    } finally {
+      setLoading(false)
     }
   }
   useEffect(() => {
     void load()
   }, [])
-  const avatar = user.avatarUrl ? (
-    <img
-      src={user.avatarUrl}
-      alt="Аватар пользователя"
-      className="h-full w-full object-cover"
-    />
-  ) : (
-    <span>{`${user.firstName[0] ?? "П"}${user.lastName?.[0] ?? ""}`}</span>
-  )
+  const initials = `${user.firstName[0] ?? "П"}${user.lastName?.[0] ?? ""}`;
+  const counts = { profile: null, events: events.length, companies: companies.length, applications: applications.filter(item => item.status === "pending").length };
+  const empty = (title: string, description: string) => <div className="plans-empty"><CalendarMonthOutlined/><h3>{title}</h3><p>{description}</p><button className="plans-button plans-button--primary" onClick={onFindEvents}>Найти событие <ArrowOutward fontSize="small"/></button></div>;
   return (
-    <main className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
-      <div className="grid gap-8 lg:grid-cols-[250px_1fr]">
-        <aside className="h-fit rounded-3xl border border-[#dce5da] bg-white p-3 lg:sticky lg:top-24">
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={`mb-1 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${
-                tab === id
-                  ? "bg-[#e7f8c9] text-[#21462e]"
-                  : "text-[#526258] hover:bg-[#f2f6ef]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+    <main className="dashboard-page plans-page mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
+      <header className="plans-heading"><div><p className="plans-eyebrow">Ваше личное пространство</p><h1>Мои планы<span>.</span></h1><p>Люди, встречи и всё, что вы собираетесь пережить вместе.</p></div><button className="plans-button plans-button--primary" onClick={onFindEvents}>Найти событие <ArrowOutward fontSize="small"/></button></header>
+      <div className="plans-layout">
+        <aside className="plans-sidebar">
+          <p className="plans-sidebar-caption">Личный кабинет</p>
+          <nav aria-label="Разделы моих планов">
+            {tabs.map(([id, label]) => {
+              const NavIcon = tabIcons[id];
+              return <button key={id} aria-current={tab === id ? "page" : undefined} className="plans-nav-item" onClick={() => setTab(id)}>
+                <NavIcon fontSize="small"/><span>{label}</span>{counts[id] !== null && <b>{loading ? "—" : counts[id]}</b>}
+              </button>;
+            })}
+          </nav>
+          <div className="plans-sidebar-note"><span>Всё начинается с «пойдём».</span><p>Выбирайте событие — и находите тех, кто разделит впечатления.</p></div>
         </aside>
-        <section>
-          {error ? (
-            <p
-              role="alert"
-              className="mb-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-semibold text-[#9e3128]"
-            >
-              {error}
-            </p>
-          ) : null}
-          {tab === "profile" ? (
-            <>
-              <div className="rounded-[30px] border border-[#dce5da] bg-white p-6 sm:p-8">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                  <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-[24px] bg-[#bdf238] text-2xl font-black text-[#102318]">
-                    {avatar}
-                  </div>
-                  <div className="flex-1">
-                    <h1 className="text-2xl font-black">
-                      {user.firstName} {user.lastName}
-                    </h1>
-                    <p className="mt-1 text-sm text-[#718075]">
-                      {user.city?.name ?? "Город не указан"}
-                    </p>
-                    <p className="mt-3 text-sm text-[#607267]">
-                      {user.about || "Расскажите немного о себе."}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setEditing(!editing)}
-                    className="rounded-xl border border-[#cfdacd] px-4 py-2.5 text-sm font-bold"
-                  >
-                    {editing ? "Закрыть" : "Редактировать"}
-                  </button>
+        <section className="plans-content">
+          {error && <p role="alert" className="plans-error">{error}</p>}
+          {tab === "profile" && <>
+            <section className="plans-profile">
+              <div className="plans-profile-cover" aria-hidden="true"><span>Встречаемся в реальном мире</span></div>
+              <div className="plans-profile-body">
+                <div className="plans-profile-top">
+                  <div className="plans-avatar">{user.avatarUrl && failedAvatar !== user.avatarUrl ? <img src={user.avatarUrl} alt="Ваше фото" onError={() => setFailedAvatar(user.avatarUrl)}/> : <span>{initials}</span>}</div>
+                  <button className="plans-button plans-button--secondary" aria-expanded={editing} onClick={() => setEditing(!editing)}><EditOutlined fontSize="small"/>{editing ? "Закрыть редактор" : "Редактировать"}</button>
                 </div>
-                {editing ? (
-                  <ProfileEditor
-                    user={user}
-                    cities={cities}
-                    interests={interests}
-                    onUpdate={(next) => {
-                      onUpdate(next)
-                      setEditing(false)
-                    }}
-                  />
-                ) : (
-                  <div className="mt-6 flex flex-wrap gap-2">
-                    {user.interests.map((item) => (
-                      <span
-                        key={item.id}
-                        className="rounded-full bg-[#eff9db] px-3 py-1 text-xs font-bold"
-                      >
-                        {item.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={onFindEvents}
-                className="mt-6 rounded-xl bg-[#102318] px-5 py-3 text-sm font-extrabold text-[#bdf238]"
-              >
-                Найти новое событие
-              </button>
-            </>
-          ) : null}
-          {tab === "events" ? (
-            <section>
-              <h2 className="text-2xl font-black">Мои события</h2>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {events.map((event) => (
-                  <button
-                    key={event.id}
-                    onClick={() => onOpenEvent(event)}
-                    className="overflow-hidden rounded-2xl border border-[#dce5da] bg-white text-left"
-                  >
-                    <img
-                      src={event.imageUrl ?? ""}
-                      alt=""
-                      className="h-32 w-full object-cover"
-                    />
-                    <div className="p-4">
-                      <div className="flex justify-between gap-2">
-                        <b>{event.title}</b>
-                        <span className="rounded-full bg-[#eff9db] px-2 py-1 text-[10px] font-bold">
-                          {eventLabels[event.status]}
-                        </span>
-                      </div>
-                      {event.moderationReason ? (
-                        <p className="mt-2 text-xs text-[#9e3128]">
-                          Причина: {event.moderationReason}
-                        </p>
-                      ) : null}
-                    </div>
-                  </button>
-                ))}
+                <div className="plans-identity"><p className="plans-eyebrow">Мой профиль</p><h2>{user.firstName} {user.lastName}</h2><p className="plans-city">{user.city?.name ?? "Город не указан"}</p></div>
+                <p className="plans-about">{user.about || "Расскажите о себе — так будущей компании будет проще познакомиться с вами."}</p>
+                {editing ? <ProfileEditor user={user} cities={cities} interests={interests} onUpdate={nextUser => { onUpdate(nextUser); setEditing(false); }}/> : <div className="plans-interests"><p>Мне интересно</p><div>{user.interests.length ? user.interests.map(item => <span key={item.id}>{item.name}</span>) : <button className="plans-text-button" onClick={() => setEditing(true)}>Добавить интересы</button>}</div></div>}
               </div>
             </section>
-          ) : null}
-          {tab === "companies" ? (
-            <section>
-              <h2 className="text-2xl font-black">Мои компании</h2>
-              <div className="mt-5 space-y-3">
-                {companies.map((company) => (
-                  <CompanyCard
-                    key={company.id}
-                    company={company}
-                    user={user}
-                    onChanged={load}
-                    onOpenChats={onOpenChats}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-          {tab === "applications" ? (
-            <section>
-              <h2 className="text-2xl font-black">Заявки</h2>
-              <div className="mt-5 space-y-3">
-                {applications.map((item) => (
-                  <article
-                    key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dce5da] bg-white p-5"
-                  >
-                    <div>
-                      <b>Компания #{item.companyId}</b>
-                      <p className="mt-1 text-sm text-[#718075]">
-                        {appLabels[item.status]}
-                      </p>
-                    </div>
-                    {item.status === "pending" ? (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await api.cancelMyCompanyApplication(item.companyId)
-                            await load()
-                          } catch (caught) {
-                            setError(
-                              caught instanceof Error
-                                ? caught.message
-                                : "Не удалось отменить заявку",
-                            )
-                          }
-                        }}
-                        className="rounded-xl border border-[#e4b9b2] px-3 py-2 text-xs font-bold text-[#9e3128]"
-                      >
-                        Отменить заявку
-                      </button>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
+            <div className="plans-overview">
+              {(["events", "companies", "applications"] as const).map(id => {
+                const SummaryIcon = tabIcons[id];
+                return <button key={id} onClick={() => setTab(id)}><SummaryIcon/><span>{tabs.find(item => item[0] === id)?.[1]}</span><strong>{loading ? "—" : counts[id]}</strong><ArrowOutward className="plans-summary-arrow" fontSize="small"/></button>;
+              })}
+            </div>
+          </>}
+          {tab === "events" && <section>
+            <div className="plans-section-heading"><div><p className="plans-eyebrow">Ваш календарь впечатлений</p><h2>Мои события</h2></div><span>{loading ? "Загружаем…" : `Всего: ${events.length}`}</span></div>
+            {!loading && !error && !events.length && empty("Планы ещё впереди", "Сохраните участие в событии, и оно появится здесь.")}
+            <div className="plans-events-grid">{events.map(event => <button className="plans-event" key={event.id} onClick={() => onOpenEvent(event)}>
+              <div className="plans-event-image">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <CalendarMonthOutlined/>}<span className="plans-status" data-status={event.status}>{eventLabels[event.status]}</span></div>
+              <div className="plans-event-body"><time dateTime={event.startsAt}>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt))}</time><h3>{event.title}</h3><p>{event.locationName}</p>{event.moderationReason && <p className="plans-error">Причина: {event.moderationReason}</p>}<span className="plans-event-link">Открыть событие <ArrowOutward fontSize="small"/></span></div>
+            </button>)}</div>
+          </section>}
+          {tab === "companies" && <section>
+            <div className="plans-section-heading"><div><p className="plans-eyebrow">Те, с кем вы идёте</p><h2>Мои компании</h2></div><span>{loading ? "Загружаем…" : `Всего: ${companies.length}`}</span></div>
+            {!loading && !error && !companies.length && empty("Найдите своих людей", "Выберите событие и присоединитесь к компании или создайте свою.")}
+            <div className="plans-company-list">{companies.map(company => <CompanyCard key={company.id} company={company} user={user} onChanged={load} onOpenChats={onOpenChats}/>)}</div>
+          </section>}
+          {tab === "applications" && <section>
+            <div className="plans-section-heading"><div><p className="plans-eyebrow">На связи с организаторами</p><h2>Мои заявки</h2></div><span>{loading ? "Загружаем…" : `Всего: ${applications.length}`}</span></div>
+            {!loading && !error && !applications.length && empty("Заявок пока нет", "Здесь можно следить за ответами компаний, к которым вы хотите присоединиться.")}
+            <div className="plans-company-list">{applications.map(item => <article key={item.id} className="plans-application"><span className="plans-application-icon"><GroupsOutlined/></span><div><h3>{companies.find(company => company.id === item.companyId)?.name ?? `Компания #${item.companyId}`}</h3><span className="plans-status" data-status={item.status}>{appLabels[item.status]}</span></div>{item.status === "pending" && <button className="plans-button plans-button--danger" onClick={async () => { try { await api.cancelMyCompanyApplication(item.companyId); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось отменить заявку"); } }}>Отменить заявку</button>}</article>)}</div>
+          </section>}
         </section>
       </div>
     </main>
-  )
+  );
 }
 
 function CompanyCard({
@@ -279,17 +170,15 @@ function CompanyCard({
       ? ` · возраст ${company.minAge ?? "—"}–${company.maxAge ?? "—"}`
       : ""
   return (
-    <article className="rounded-2xl border border-[#dce5da] bg-white p-5">
+    <article className="plans-company">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="plans-company-heading">
+          <p className="plans-eyebrow">{owner ? "Вы организатор" : "Вы участник"}</p>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-extrabold">{company.name}</h3>
             <span
-              className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-                company.status === "active"
-                  ? "bg-[#eff9db] text-[#31513a]"
-                  : "bg-[#fff5dc] text-[#7d6022]"
-              }`}
+              className="plans-status"
+              data-status={company.status}
             >
               {company.status === "active" ? "Набор открыт" : "Набор закрыт"}
             </span>
@@ -302,16 +191,19 @@ function CompanyCard({
         <button
           onClick={onOpenChats}
           aria-label="Открыть чат"
-          className="grid h-10 w-10 place-items-center rounded-xl bg-[#102318] text-[#bdf238]"
+          className="plans-chat-button"
         >
           <ForumOutlined fontSize="small" />
         </button>
       </div>
+      {company.description && <p className="plans-company-description">{company.description}</p>}
+      <div className="plans-capacity" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, company.membersCount / Math.max(1, company.maxMembers) * 100))}%` }}/></div>
       <div className="mt-4 border-t border-[#edf1ea] pt-4">
         {owner ? (
           <button
             onClick={() => setManage(!manage)}
-            className="rounded-xl bg-[#102318] px-3 py-2 text-xs font-bold text-[#bdf238]"
+            aria-expanded={manage}
+            className="plans-button plans-button--secondary"
           >
             {manage ? "Закрыть управление" : "Управлять компанией"}
           </button>
@@ -323,7 +215,7 @@ function CompanyCard({
                 await onChanged()
               }
             }}
-            className="rounded-xl border border-[#e4b9b2] px-3 py-2 text-xs font-bold text-[#9e3128]"
+            className="plans-button plans-button--danger"
           >
             Выйти из компании
           </button>
@@ -417,7 +309,7 @@ function CompanyManager({
     }
   }
   return (
-    <div className="mt-5 rounded-2xl bg-[#f7faf5] p-4">
+    <div className="plans-manager mt-5 rounded-2xl p-4">
       <h4 className="font-extrabold">Управление компанией</h4>
       <form onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-bold">
@@ -519,7 +411,7 @@ function CompanyManager({
             className="mt-1.5 w-full rounded-lg border border-[#dce5da] px-3 py-2 font-normal"
           />
         </label>
-        <button className="rounded-xl bg-[#102318] px-4 py-2.5 text-xs font-bold text-[#bdf238]">
+        <button className="plans-button plans-button--primary">
           Сохранить
         </button>
       </form>
@@ -539,7 +431,7 @@ function CompanyManager({
               )
             }
           }}
-          className="rounded-xl border px-3 py-2 text-xs font-bold"
+          className="plans-button plans-button--secondary"
         >
           {company.status === "active" ? "Закрыть набор" : "Открыть набор"}
         </button>
@@ -560,7 +452,7 @@ function CompanyManager({
               )
             }
           }}
-          className="rounded-xl border border-[#e4b9b2] px-3 py-2 text-xs font-bold text-[#9e3128]"
+          className="plans-button plans-button--danger"
         >
           Удалить компанию
         </button>
@@ -606,6 +498,7 @@ function CompanyManager({
           applications.map((item) => (
             <div
               key={item.id}
+              aria-pressed={interestIds.includes(item.id)}
               className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm"
             >
               <span>
@@ -615,13 +508,13 @@ function CompanyManager({
               <span className="flex gap-2">
                 <button
                   onClick={() => void decide(item.id, "approve")}
-                  className="rounded-lg bg-[#102318] px-2 py-1 text-xs text-[#bdf238]"
+                  className="plans-button plans-button--primary"
                 >
                   Принять
                 </button>
                 <button
                   onClick={() => void decide(item.id, "reject")}
-                  className="rounded-lg border px-2 py-1 text-xs"
+                  className="plans-button plans-button--secondary"
                 >
                   Отклонить
                 </button>
@@ -697,7 +590,7 @@ function ProfileEditor({
   return (
     <form
       onSubmit={save}
-      className="mt-7 grid gap-4 border-t border-[#edf1ea] pt-6 sm:grid-cols-2"
+      className="plans-editor mt-7 grid gap-4 border-t border-[#edf1ea] pt-6 sm:grid-cols-2"
     >
       <label className="text-sm font-bold">
         Имя
@@ -812,7 +705,7 @@ function ProfileEditor({
       {error ? (
         <p className="sm:col-span-2 text-sm text-[#9e3128]">{error}</p>
       ) : null}
-      <button className="sm:col-span-2 rounded-xl bg-[#102318] py-3 text-sm font-bold text-[#bdf238]">
+      <button className="plans-button plans-button--primary sm:col-span-2">
         Сохранить профиль
       </button>
     </form>
