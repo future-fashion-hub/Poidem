@@ -16,6 +16,9 @@ import type {
   User,
   UserShort,
 } from "../api/types"
+import SiteSelect from "./SiteSelect"
+import SiteDatePicker from "./SiteDatePicker"
+import EventIcon from "./EventIcon"
 
 type Tab = "profile" | "events" | "companies" | "applications"
 type Props = {
@@ -92,7 +95,7 @@ export default function UserDashboard({
   const empty = (title: string, description: string) => <div className="plans-empty"><CalendarMonthOutlined/><h3>{title}</h3><p>{description}</p><button className="plans-button plans-button--primary" onClick={onFindEvents}>Найти событие <ArrowOutward fontSize="small"/></button></div>;
   return (
     <main className="dashboard-page plans-page mx-auto max-w-[1240px] px-5 py-10 lg:px-8">
-      <header className="plans-heading"><div><p className="plans-eyebrow">Ваше личное пространство</p><h1>Мои планы<span>.</span></h1><p>Люди, встречи и всё, что вы собираетесь пережить вместе.</p></div><button className="plans-button plans-button--primary" onClick={onFindEvents}>Найти событие <ArrowOutward fontSize="small"/></button></header>
+      <header className="plans-heading"><div><p className="plans-eyebrow">Ваше личное пространство</p><h1>Мои планы<span>.</span></h1><p>Люди, встречи и всё, что вы собираетесь пережить вместе.</p></div><span className="plans-find-icon" aria-hidden="true"><CalendarMonthOutlined fontSize="medium"/></span></header>
       <div className="plans-layout">
         <aside className="plans-sidebar">
           <p className="plans-sidebar-caption">Личный кабинет</p>
@@ -133,7 +136,7 @@ export default function UserDashboard({
             {!loading && !error && !events.length && empty("Планы ещё впереди", "Сохраните участие в событии, и оно появится здесь.")}
             <div className="plans-events-grid">{events.map(event => <button className="plans-event" key={event.id} onClick={() => onOpenEvent(event)}>
               <div className="plans-event-image">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <CalendarMonthOutlined/>}<span className="plans-status" data-status={event.status}>{eventLabels[event.status]}</span></div>
-              <div className="plans-event-body"><time dateTime={event.startsAt}>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt))}</time><h3>{event.title}</h3><p>{event.locationName}</p>{event.moderationReason && <p className="plans-error">Причина: {event.moderationReason}</p>}<span className="plans-event-link">Открыть событие <ArrowOutward fontSize="small"/></span></div>
+              <div className="plans-event-body"><time dateTime={event.startsAt}>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt))}</time><h3>{event.title}</h3><p className="plans-event-location"><EventIcon name="pin"/><span>{event.locationName}</span></p><div className="plans-event-social"><span><b>{event.participantsCount}</b> идут</span><span><EventIcon name="users"/><b>{event.companiesCount}</b> компаний</span></div>{event.moderationReason && <p className="plans-error">Причина: {event.moderationReason}</p>}<span className="plans-event-link">Открыть событие <ArrowOutward fontSize="small"/></span></div>
             </button>)}</div>
           </section>}
           {tab === "companies" && <section>
@@ -337,19 +340,12 @@ function CompanyManager({
         </label>
         <label className="text-xs font-bold">
           Тип вступления
-          <select
+          <SiteSelect
             value={draft.joinType ?? "open"}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                joinType: event.target.value as Company["joinType"],
-              })
-            }
-            className="mt-1.5 w-full rounded-lg border border-[#dce5da] px-3 py-2 font-normal"
-          >
-            <option value="open">Свободное</option>
-            <option value="request">По заявке</option>
-          </select>
+            onChange={(value) => setDraft({ ...draft, joinType: value as Company["joinType"] })}
+            className="mt-1.5 font-normal"
+            options={[{ value: "open", label: "Свободное" }, { value: "request", label: "По заявке" }]}
+          />
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs font-bold">
@@ -498,7 +494,6 @@ function CompanyManager({
           applications.map((item) => (
             <div
               key={item.id}
-              aria-pressed={interestIds.includes(item.id)}
               className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm"
             >
               <span>
@@ -555,7 +550,6 @@ function ProfileEditor({
     user.interests.map((item) => item.id),
   )
   const [avatar, setAvatar] = useState<File | null>(null)
-  const [removeAvatar, setRemoveAvatar] = useState(false)
   const [error, setError] = useState("")
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -571,10 +565,7 @@ function ProfileEditor({
         birthDate: birthDate || null,
         interestIds,
       })
-      if (removeAvatar) {
-        await api.deleteMyAvatar()
-        next = { ...next, avatarUrl: null }
-      } else if (avatar) {
+      if (avatar) {
         const photo = await api.uploadMyAvatar(avatar)
         next = { ...next, avatarUrl: photo.avatarUrl }
       }
@@ -610,66 +601,40 @@ function ProfileEditor({
       </label>
       <label className="text-sm font-bold">
         Город
-        <select
+        <SiteSelect
           value={cityId}
-          onChange={(event) => setCityId(Number(event.target.value))}
-          className="mt-2 w-full rounded-xl border border-[#dce5da] px-3 py-2 font-normal"
-        >
-          {cities.map((city) => (
-            <option key={city.id} value={city.id}>
-              {city.name}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => setCityId(Number(value))}
+          className="mt-2 font-normal"
+          options={cities.map((city) => ({ value: city.id, label: city.name }))}
+        />
       </label>
       <label className="text-sm font-bold">
         Пол
-        <select
+        <SiteSelect
           value={gender ?? ""}
-          onChange={(event) =>
-            setGender((event.target.value || null) as User["gender"])
-          }
-          className="mt-2 w-full rounded-xl border border-[#dce5da] px-3 py-2 font-normal"
-        >
-          <option value="">Не указывать</option>
-          <option value="male">Мужской</option>
-          <option value="female">Женский</option>
-        </select>
+          onChange={(value) => setGender((value || null) as User["gender"])}
+          className="mt-2 font-normal"
+          options={[{ value: "", label: "Не указывать" }, { value: "male", label: "Мужской" }, { value: "female", label: "Женский" }]}
+        />
       </label>
       <label className="text-sm font-bold">
         Дата рождения
-        <input
-          type="date"
+        <SiteDatePicker
           max={new Date().toISOString().slice(0, 10)}
           value={birthDate}
-          onChange={(event) => setBirthDate(event.target.value)}
-          className="mt-2 w-full rounded-xl border border-[#dce5da] px-3 py-2 font-normal"
+          onChange={setBirthDate}
+          placeholder="Выберите дату рождения"
+          ariaLabel="Дата рождения"
+          className="mt-2 font-normal"
         />
       </label>
-      <label className="text-sm font-bold">
-        Новое фото
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={(event) => {
-            setAvatar(event.target.files?.[0] ?? null)
-            setRemoveAvatar(false)
-          }}
-          className="mt-2 block w-full text-xs font-normal"
-        />
-        {user.avatarUrl ? (
-          <button
-            type="button"
-            onClick={() => {
-              setRemoveAvatar(true)
-              setAvatar(null)
-            }}
-            className="mt-2 text-xs font-bold text-[#9e3128] underline"
-          >
-            Удалить текущую аватарку
-          </button>
-        ) : null}
-      </label>
+      <div className="profile-photo-field">
+        <p>Фото профиля</p>
+        <div className="profile-photo-compact">
+          <label className="profile-photo-compact-button"><EditOutlined fontSize="small"/><span>{avatar?.name ?? "Выбрать фото"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setAvatar(event.target.files?.[0] ?? null)}/></label>
+        </div>
+        <small>JPG, PNG или WebP до 5 МБ</small>
+      </div>
       <label className="sm:col-span-2 text-sm font-bold">
         О себе
         <textarea
@@ -681,11 +646,12 @@ function ProfileEditor({
       </label>
       <div className="sm:col-span-2">
         <p className="text-sm font-bold">Интересы</p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="discovery-categories interest-selector mt-2" aria-label="Выбор интересов">
           {interests.map((item) => (
             <button
               type="button"
               key={item.id}
+              aria-pressed={interestIds.includes(item.id)}
               onClick={() =>
                 setInterestIds((ids) =>
                   ids.includes(item.id)
@@ -693,9 +659,6 @@ function ProfileEditor({
                     : [...ids, item.id],
                 )
               }
-              className={`rounded-full border px-3 py-1 text-xs ${
-                interestIds.includes(item.id) ? "bg-[#eff9db]" : ""
-              }`}
             >
               {item.name}
             </button>
@@ -703,7 +666,7 @@ function ProfileEditor({
         </div>
       </div>
       {error ? (
-        <p className="sm:col-span-2 text-sm text-[#9e3128]">{error}</p>
+        <p role="alert" className="sm:col-span-2 text-sm text-[#9e3128]">{error}</p>
       ) : null}
       <button className="plans-button plans-button--primary sm:col-span-2">
         Сохранить профиль

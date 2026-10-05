@@ -72,7 +72,23 @@ const initialReports: Report[] = [
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
 const fresh = (): State => ({ user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {} });
-function load(): State { try { const saved = localStorage.getItem(storageKey); if (!saved) return fresh(); const parsed = JSON.parse(saved) as Partial<State>; return { ...fresh(), ...parsed, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports }; } catch { return fresh(); } }
+function load(): State {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) return fresh();
+    const parsed = JSON.parse(saved) as Partial<State>;
+    const events = (parsed.events ?? initialEvents).map(event => {
+      // Older demo snapshots predate location. Restore only known, unchanged
+      // demo venues; keep explicit nulls and user-created events untouched.
+      if (Object.prototype.hasOwnProperty.call(event, "location")) return event;
+      const original = initialEvents.find(seed => seed.id === event.id
+        && seed.cityId === event.cityId && seed.locationName === event.locationName
+        && seed.address === event.address);
+      return original ? { ...event, location: original.location } : event;
+    });
+    return { ...fresh(), ...parsed, events, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports };
+  } catch { return fresh(); }
+}
 let state = load();
 const passwordAccounts = new Map<string, { password: string; user: User }>();
 const companyMessages = new Map<number, CompanyMessage[]>();

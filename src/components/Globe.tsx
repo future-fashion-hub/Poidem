@@ -8,7 +8,7 @@ type PointOfView = { lat: number; lng: number; altitude: number };
 const STARTING_VIEW: PointOfView = { lat: 51, lng: 46, altitude: 1.65 };
 const topology = countriesTopology as unknown as { type: "Topology"; objects: { countries: object } };
 const countries = (feature(
-  topology as Parameters<typeof feature>[0],
+  countriesTopology as unknown as Parameters<typeof feature>[0],
   topology.objects.countries as Parameters<typeof feature>[1],
 ) as { features: object[] }).features;
 

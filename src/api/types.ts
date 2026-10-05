@@ -124,7 +124,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public details: Record<string, unknown> = {},
-    public requestId = crypto.randomUUID(),
+    public requestId: string = crypto.randomUUID(),
   ) {
     super(message);
   }

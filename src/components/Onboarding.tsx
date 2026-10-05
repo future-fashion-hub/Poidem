@@ -1,6 +1,9 @@
 import { useState } from "react"
 import { api } from "../api"
 import type { DictionaryItem, User } from "../api/types"
+import SiteSelect from "./SiteSelect"
+import SiteDatePicker from "./SiteDatePicker"
+import { FiMapPin, FiStar, FiUser } from "react-icons/fi"
 
 export default function Onboarding({
   user,
@@ -71,46 +74,60 @@ export default function Onboarding({
     setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
   }
+  const previewName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || "Ваше имя"
+  const previewCity = cities.find((city) => city.id === cityId)?.name ?? "Ваш город"
+  const previewInterests = interests.filter((interest) => interestIds.includes(interest.id)).slice(0, 3)
+  const previewInitial = (firstName.trim().charAt(0) || user.firstName?.charAt(0) || "П").toUpperCase()
   return (
-    <main className="min-h-[calc(100vh-72px)] bg-[#f5f7f2] px-5 py-10">
-      <div className="mx-auto max-w-3xl">
-        <p className="mb-5 text-sm font-bold text-[#69826e]">
-          Настройка личного профиля
-        </p>
-        <form
-          onSubmit={submit}
-          className="rounded-[32px] border border-[#dce5da] bg-white p-6 shadow-[0_20px_60px_rgba(35,65,42,.06)] sm:p-10"
-        >
-          <h1 className="text-center text-3xl font-black">
-            Добро пожаловать в «Пойдём»!
-          </h1>
-          <h2 className="mt-9 text-lg font-extrabold">Личная информация</h2>
-          <label className="mt-4 flex items-center gap-4 rounded-2xl bg-[#f7faf5] p-4">
-            <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full border border-dashed border-[#547b32] bg-[#eff9db] text-3xl">
+    <main className="onboarding-page">
+      <div className="onboarding-layout">
+        <aside className="onboarding-intro">
+          <div><p>Финальный шаг</p><h1>Осталось познакомиться<span>.</span></h1><div>Расскажите немного о себе — так рекомендации станут точнее, а новым знакомым будет проще начать разговор.</div></div>
+          <article className="onboarding-preview" aria-label="Предпросмотр вашего профиля">
+            <header className="onboarding-preview-header">
+              <span><FiStar aria-hidden="true"/>Ваш профиль</span>
+              <small>Предпросмотр</small>
+            </header>
+            <div className="onboarding-preview-person">
+              <span className="onboarding-preview-avatar">
+                {avatarPreview ? <img src={avatarPreview} alt=""/> : previewInitial}
+              </span>
+              <div>
+                <h2>{previewName}</h2>
+                <p><FiMapPin aria-hidden="true"/>{previewCity}</p>
+              </div>
+            </div>
+            <p className={`onboarding-preview-about${about.trim() ? "" : " is-placeholder"}`}>
+              {about.trim() || "Здесь появится несколько слов о вас — коротко, живо и по делу."}
+            </p>
+            <div className="onboarding-preview-interests" aria-label="Выбранные интересы">
+              {previewInterests.length
+                ? previewInterests.map((interest) => <span key={interest.id}>{interest.name}</span>)
+                : <><span className="is-placeholder">Музыка</span><span className="is-placeholder">Прогулки</span><span className="is-placeholder">Новое</span></>}
+            </div>
+            <footer><FiStar aria-hidden="true"/><span>После сохранения мы подберём события и компании точнее.</span></footer>
+          </article>
+          <div className="auth-progress auth-progress--inverse" aria-label="Этап регистрации"><span><i>1</i>Аккаунт</span><b/><span className="is-active"><i>2</i>Профиль</span></div>
+          <ul><li><span>01</span>Настройте профиль</li><li><span>02</span>Выберите интересы</li><li><span>03</span>Найдите свой план</li></ul>
+        </aside>
+        <form onSubmit={submit} className="onboarding-form">
+          <header><p>Личный профиль</p><h2>Расскажите о себе</h2><span>Поля можно изменить позже в разделе «Мои планы».</span></header>
+          <section className="onboarding-section">
+            <div className="onboarding-section-title"><span>01</span><div><h3>Основная информация</h3><p>Как к вам обращаться и где вы ищете события.</p></div></div>
+            <div className="profile-photo-picker">
+            <span className={`profile-photo-preview${avatarPreview ? "" : " profile-photo-preview--empty"}`}>
               {avatarPreview ? (
                 <img
                   src={avatarPreview}
                   alt="Фото профиля"
                   className="h-full w-full object-cover"
                 />
-              ) : (
-                "+"
-              )}
+              ) : <FiUser aria-hidden="true"/>}
             </span>
-            <span>
-              <b className="block text-sm">Фото профиля</b>
-              <small className="text-[#718075]">
-                JPG, PNG или WebP до 5 МБ
-              </small>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => avatar(e.target.files?.[0])}
-                className="mt-2 block text-xs"
-              />
-            </span>
-          </label>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="profile-photo-copy"><strong>Фото профиля</strong><span>Поможет участникам узнать вас. JPG, PNG или WebP до 5 МБ.</span></div>
+            <div className="profile-photo-actions"><label className="profile-photo-button">Выбрать фото<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => avatar(event.target.files?.[0])}/></label></div>
+          </div>
+          <div className="onboarding-grid">
             <label className="text-sm font-bold">
               Имя
               <input
@@ -129,45 +146,38 @@ export default function Onboarding({
             </label>
             <label className="text-sm font-bold">
               Пол
-              <select
+              <SiteSelect
                 value={gender ?? ""}
-                onChange={(e) =>
-                  setGender((e.target.value || null) as User["gender"])
-                }
-                className="mt-2 w-full rounded-xl border border-[#dce5da] px-4 py-3 font-normal"
-              >
-                <option value="">Не указывать</option>
-                <option value="male">Мужской</option>
-                <option value="female">Женский</option>
-              </select>
+                onChange={(value) => setGender((value || null) as User["gender"])}
+                className="mt-2 font-normal"
+                options={[{ value: "", label: "Не указывать" }, { value: "male", label: "Мужской" }, { value: "female", label: "Женский" }]}
+              />
             </label>
             <label className="text-sm font-bold">
               Дата рождения
-              <input
-                type="date"
+              <SiteDatePicker
                 max={new Date().toISOString().slice(0, 10)}
                 value={birthDate}
-                onChange={(e) => setBirthDate(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-[#dce5da] px-4 py-3 font-normal"
+                onChange={setBirthDate}
+                placeholder="Выберите дату рождения"
+                ariaLabel="Дата рождения"
+                className="mt-2 font-normal"
               />
             </label>
           </div>
           <label className="mt-4 block text-sm font-bold">
             Город
-            <select
+            <SiteSelect
               value={cityId}
-              onChange={(e) => setCityId(Number(e.target.value))}
-              className="mt-2 w-full rounded-xl border border-[#dce5da] px-4 py-3 font-normal"
-            >
-              <option value={0}>Выберите город</option>
-              {cities.map((city) => (
-                <option key={city.id} value={city.id}>
-                  {city.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setCityId(Number(value))}
+              className="mt-2 font-normal"
+              options={[{ value: 0, label: "Выберите город" }, ...cities.map((city) => ({ value: city.id, label: city.name }))]}
+            />
           </label>
-          <label className="mt-4 block text-sm font-bold">
+          </section>
+          <section className="onboarding-section">
+          <div className="onboarding-section-title"><span>02</span><div><h3>Несколько слов о вас</h3><p>Необязательно писать много — достаточно пары живых деталей.</p></div></div>
+          <label className="block text-sm font-bold">
             О себе
             <textarea
               value={about}
@@ -176,12 +186,15 @@ export default function Onboarding({
               className="mt-2 w-full rounded-xl border border-[#dce5da] px-4 py-3 font-normal"
             />
           </label>
-          <h2 className="mt-7 text-lg font-extrabold">Интересы</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
+          </section>
+          <section className="onboarding-section">
+          <div className="onboarding-section-title"><span>03</span><div><h3>Что вам интересно?</h3><p>Можно выбрать несколько вариантов.</p></div></div>
+          <div className="discovery-categories interest-selector" aria-label="Выбор интересов">
             {interests.map((item) => (
               <button
                 type="button"
                 key={item.id}
+                aria-pressed={interestIds.includes(item.id)}
                 onClick={() =>
                   setInterestIds((ids) =>
                     ids.includes(item.id)
@@ -189,24 +202,20 @@ export default function Onboarding({
                       : [...ids, item.id],
                   )
                 }
-                className={`rounded-full border px-4 py-2 text-sm font-bold ${
-                  interestIds.includes(item.id)
-                    ? "border-[#547b32] bg-[#eff9db]"
-                    : "border-[#dce5da]"
-                }`}
               >
                 {item.name}
               </button>
             ))}
           </div>
+          </section>
           {error && (
-            <p className="mt-5 text-sm font-bold text-[#9e3128]">{error}</p>
+            <p role="alert" className="auth-error">{error}</p>
           )}
           <button
             disabled={saving}
-            className="mt-8 w-full rounded-2xl bg-[#102318] py-4 text-sm font-extrabold text-[#bdf238]"
+            className="onboarding-submit"
           >
-            {saving ? "Сохраняем…" : "Сохранить и продолжить"}
+            {saving ? "Сохраняем…" : "Завершить настройку"}
           </button>
         </form>
       </div>

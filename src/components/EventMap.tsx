@@ -1,42 +1,14 @@
-import { useEffect } from "react";
-import { divIcon } from "leaflet";
+import { useEffect, useMemo } from "react";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
 import type { Event } from "../api/types";
+import { eventPosition } from "../api/eventPosition";
+import { eventMapMarkerIcon } from "./eventMapMarker";
 
 type EventMapProps = {
   events: Event[];
   onSelect: (event: Event) => void;
 };
-
-function markerIcon(event: Event) {
-  const pin = document.createElement("div");
-  pin.className = "event-map-pin";
-  const cover = document.createElement("div");
-  cover.className = "event-map-pin-image";
-  const fallback = () => { cover.textContent = event.title.slice(0, 1).toUpperCase(); };
-  if (event.imageUrl) {
-    const image = document.createElement("img");
-    // Use the exact cover URL from the event, shared with its detail card.
-    image.src = event.imageUrl;
-    image.alt = event.title;
-    image.width = 32;
-    image.height = 32;
-    image.addEventListener("error", fallback, { once: true });
-    cover.append(image);
-  } else {
-    fallback();
-  }
-  pin.append(cover);
-
-  return divIcon({
-    className: "event-map-marker-wrapper",
-    html: pin,
-    iconSize: [68, 68],
-    iconAnchor: [34, 66],
-    tooltipAnchor: [0, -62],
-  });
-}
 
 function formatTime(value: string) {
   const match = value.match(/T(\d{2}:\d{2})/);
@@ -51,7 +23,22 @@ function RemoveLeafletAttribution() {
   return null;
 }
 
+function FitEventMarkers({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  const coordinates = JSON.stringify(positions);
+  useEffect(() => {
+    const points = JSON.parse(coordinates) as [number, number][];
+    map.invalidateSize();
+    if (points.length) map.fitBounds(points, { padding: [55, 75], maxZoom: 13, animate: false });
+  }, [map, coordinates]);
+  return null;
+}
+
 export default function EventMap({ events, onSelect }: EventMapProps) {
+  const markers = useMemo(() => events.flatMap(event => {
+    const position = eventPosition(event);
+    return position ? [{ event, position }] : [];
+  }), [events]);
   return <div className="event-map overflow-hidden rounded-[28px] border border-white/70 bg-[#dce9d6] shadow-[0_22px_50px_rgba(35,65,42,.18)]">
     <MapContainer
       center={[57.3, 50]}
@@ -63,16 +50,16 @@ export default function EventMap({ events, onSelect }: EventMapProps) {
       aria-label="Карта мероприятий"
     >
       <RemoveLeafletAttribution />
+      <FitEventMarkers positions={markers.map(marker => marker.position)} />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {events.filter((event) => event.location !== null).map((event) => {
-        const position: [number, number] = [event.location!.latitude, event.location!.longitude];
+      {markers.map(({ event, position }) => {
         return <Marker
           key={event.id}
           position={position}
-          icon={markerIcon(event)}
+          icon={eventMapMarkerIcon(event.title, event.imageUrl)}
           title={event.title}
           eventHandlers={{ click: () => onSelect(event) }}
         >
