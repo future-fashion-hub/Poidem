@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const cities: DictionaryItem[] = [
@@ -55,7 +55,7 @@ const initialCompanies = [
   company(5, 4, "Первые пять километров", "Темп 6:30–7:00, идеально для первого старта.", 6, 4, "open", people[2]),
 ];
 
-type State = { user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]> };
+type State = { user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
 const storageKey = "poydem_mock_v1";
 const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [interests[0], interests[2], interests[6]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00", gender: "male", birthDate: "1997-05-18" };
 const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00", gender: null, birthDate: null };
@@ -71,7 +71,7 @@ const initialReports: Report[] = [
   { id: 2, targetType: "company", targetId: 4, reason: "Спам", description: "Организатор отправляет одинаковые сообщения участникам.", author: people[2], status: "pending", resolvedBy: null, createdAt: "2026-09-23T10:05:00+03:00", resolvedAt: null },
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
-const fresh = (): State => ({ user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {} });
+const fresh = (): State => ({ user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
     const saved = localStorage.getItem(storageKey);
@@ -116,12 +116,36 @@ export const mockApi = {
   async logout() { await wait(); state.user = null; persist(); },
   async getCurrentUser() { await wait(); return requireUser(); },
   async getUserProfile(id: number) { await wait(); const item = state.users.find((user) => user.id === id); if (!item) throw new ApiError("USER_NOT_FOUND", "Пользователь не найден", 404); return item; },
-  async listEvents(filters: { search?: string; cityId?: number; categoryId?: number; sort?: string } = {}) {
+  async listEvents(filters: { search?: string; cityId?: number; categoryId?: number; sort?: string } = {}, _options: PageOptions = {}) {
     await wait(); let result = state.events.filter((item) => item.status === "active");
     if (filters.search) { const query = filters.search.toLocaleLowerCase("ru"); result = result.filter((item) => `${item.title} ${item.description ?? ""} ${item.locationName}`.toLocaleLowerCase("ru").includes(query)); }
     if (filters.cityId) result = result.filter((item) => item.cityId === filters.cityId);
     if (filters.categoryId) result = result.filter((item) => item.categoryId === filters.categoryId);
     result.sort(filters.sort === "popular" ? (a, b) => b.participantsCount - a.participantsCount : (a, b) => a.startsAt.localeCompare(b.startsAt)); return page(result);
+  },
+  async listFavorites(options: PageOptions = {}): Promise<Paginated<Favorite>> {
+    const user = requireUser(); await wait();
+    const saved = [...(state.favoritesByUser[String(user.id)] ?? [])].sort((a, b) => b.savedAt.localeCompare(a.savedAt) || b.eventId - a.eventId);
+    const current = options.page ?? 1; const limit = options.limit ?? 20;
+    const items = saved.slice((current - 1) * limit, current * limit).map(item => {
+      const event = state.events.find(candidate => candidate.id === item.eventId);
+      const available = !!event && event.status === "active";
+      return { ...item, available, unavailableReason: available ? null : "EVENT_UNAVAILABLE", event: available ? event : null };
+    });
+    return { items, pagination: { page: current, limit, total: saved.length, totalPages: Math.ceil(saved.length / limit) } };
+  },
+  async saveFavorite(eventId: number) {
+    const user = requireUser(); await wait();
+    const saved = state.favoritesByUser[String(user.id)] ?? (state.favoritesByUser[String(user.id)] = []);
+    if (saved.some(item => item.eventId === eventId)) return;
+    const event = state.events.find(item => item.id === eventId && item.status === "active");
+    if (!event) throw new ApiError("EVENT_NOT_FOUND", "Событие недоступно", 404);
+    saved.push({ eventId, savedAt: new Date().toISOString() }); persist();
+  },
+  async removeFavorite(eventId: number) {
+    const user = requireUser(); await wait();
+    state.favoritesByUser[String(user.id)] = (state.favoritesByUser[String(user.id)] ?? []).filter(item => item.eventId !== eventId);
+    persist();
   },
   async getEvent(id: number) { await wait(); const item = state.events.find((event) => event.id === id); if (!item) throw new ApiError("EVENT_NOT_FOUND", "Мероприятие не найдено", 404); return item; },
   async uploadEventCover(file: File) { await wait(); if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new ApiError("UNSUPPORTED_EVENT_COVER_TYPE", "Выберите JPG, PNG или WebP", 415); if (file.size > 10_485_760) throw new ApiError("EVENT_COVER_TOO_LARGE", "Размер обложки не должен превышать 10 МБ", 413); return { url: URL.createObjectURL(file) }; },
@@ -182,6 +206,7 @@ export const mockApi = {
   async moderateAdminEvent(id: number, status: Event["status"], reason?: string) { return this.updateAdminEvent(id, { status, moderationReason: reason ?? null }); },
   async listAdminCompanies() { await wait(); return page(state.companies); },
   async blockAdminCompany(id: number) { const item = state.companies.find((entry) => entry.id === id); if (!item) throw new ApiError("COMPANY_NOT_FOUND", "Компания не найдена", 404); item.status = "blocked"; state.applications.forEach((application) => { if (application.companyId === id && application.status === "pending") { application.status = "cancelled"; application.resolutionReason = "COMPANY_BLOCKED"; application.resolvedAt = new Date().toISOString(); } }); persist(); return item; },
+  async unblockAdminCompany(id: number) { const item = state.companies.find((entry) => entry.id === id); if (!item) throw new ApiError("COMPANY_NOT_FOUND", "Компания не найдена", 404); item.status = "active"; persist(); return item; },
   async listAdminReports(status?: Report["status"]) { await wait(); return page(state.reports.filter((item) => !status || item.status === status)); },
   async moderateAdminReport(id: number, status: "resolved" | "rejected") { const item = state.reports.find((entry) => entry.id === id); if (!item) throw new ApiError("REPORT_NOT_FOUND", "Жалоба не найдена", 404); item.status = status; item.resolvedBy = adminUser; item.resolvedAt = new Date().toISOString(); persist(); return item; },
   reset() { localStorage.removeItem(storageKey); state = fresh(); window.location.reload(); },

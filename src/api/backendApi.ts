@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
@@ -13,6 +13,7 @@ export async function getChatAccessToken() {
   if (!accessToken) throw new ApiError("UNAUTHORIZED", "Сначала войдите в аккаунт", 401);
   return accessToken;
 }
+export async function refreshChatAccessToken() { return refresh(); }
 
 type EventFilters = { search?: string; cityId?: number; categoryId?: number; sort?: string };
 
@@ -84,18 +85,21 @@ export const backendApi = {
   async logout() { await request<void>("/auth/logout", { method: "POST" }, false); accessToken = null; },
   async getCurrentUser() { if (!accessToken) await refresh(); return request<User>("/auth/me"); },
   async getUserProfile(id: number) { return request<User>(`/users/${id}`); },
-  async listEvents(filters: EventFilters = {}) { return request<Paginated<Event>>(`/events${query({ ...filters, page: 1, limit: 100 })}`); },
+  async listEvents(filters: EventFilters = {}, options: PageOptions = {}) { return request<Paginated<Event>>(`/events${query({ ...filters, page: options.page ?? 1, limit: options.limit ?? 24 })}`); },
+  async listFavorites(options: PageOptions = {}) { return request<Paginated<Favorite>>(`/users/me/favorites${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async saveFavorite(eventId: number) { return request<void>(`/users/me/favorites/${eventId}`, { method: "PUT" }); },
+  async removeFavorite(eventId: number) { return request<void>(`/users/me/favorites/${eventId}`, { method: "DELETE" }); },
   async getEvent(id: number) { return request<Event>(`/events/${id}`); },
   async uploadEventCover(file: File) { const form = new FormData(); form.append("file", file); return request<{ url: string }>("/uploads/events", { method: "POST", body: form }); },
   async createEvent(input: EventInput) { return request<Event>("/events", { method: "POST", body: JSON.stringify(input) }); },
   async updateOwnEvent(id: number, input: Partial<EventInput>) { return request<Event>(`/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }); },
   async deleteOwnEvent(id: number) { return request<void>(`/events/${id}`, { method: "DELETE" }); },
-  async listEventParticipants(id: number) { return request<Paginated<UserShort>>(`/events/${id}/participants?page=1&limit=20`); },
-  async listEventCompanies(eventId: number) { return request<Paginated<Company>>(`/events/${eventId}/companies?page=1&limit=100`); },
+  async listEventParticipants(id: number, options: PageOptions = {}) { return request<Paginated<UserShort>>(`/events/${id}/participants${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async listEventCompanies(eventId: number, options: PageOptions = {}) { return request<Paginated<Company>>(`/events/${eventId}/companies${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async getCompany(companyId: number) { return request<Company>(`/companies/${companyId}`); },
   async updateCompany(companyId: number, input: CompanyUpdate) { return request<Company>(`/companies/${companyId}`, { method: "PATCH", body: JSON.stringify(input) }); },
   async deleteCompany(companyId: number) { return request<void>(`/companies/${companyId}`, { method: "DELETE" }); },
-  async listCompanyMembers(companyId: number) { return request<Paginated<UserShort>>(`/companies/${companyId}/members?page=1&limit=100`); },
+  async listCompanyMembers(companyId: number, options: PageOptions = {}) { return request<Paginated<UserShort>>(`/companies/${companyId}/members${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async leaveCompany(companyId: number) { return request<void>(`/companies/${companyId}/members/me`, { method: "DELETE" }); },
   async removeCompanyMember(companyId: number, userId: number) { return request<void>(`/companies/${companyId}/members/${userId}`, { method: "DELETE" }); },
   async joinOpenCompany(companyId: number) { return request<void>(`/companies/${companyId}/join`, { method: "POST" }); },
@@ -109,12 +113,12 @@ export const backendApi = {
   async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
   async createReport(input: { targetType: "user" | "company" | "event"; targetId: number; reason: string; description: string | null }) { return request<Report>("/reports", { method: "POST", body: JSON.stringify(input) }); },
   async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { return request<User>("/users/me", { method: "PATCH", body: JSON.stringify(input) }); },
-  async listMyApplications() { return request<Paginated<Application>>("/users/me/applications?page=1&limit=100"); },
-  async listCompanyApplications(companyId: number) { return request<Paginated<Application>>(`/companies/${companyId}/applications?status=pending&page=1&limit=100`); },
+  async listMyApplications(options: PageOptions = {}) { return request<Paginated<Application>>(`/users/me/applications${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async listCompanyApplications(companyId: number, options: PageOptions = {}) { return request<Paginated<Application>>(`/companies/${companyId}/applications${query({ status: "pending", page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { return request<Application>(`/companies/${companyId}/applications/${applicationId}/${action}`, { method: "POST" }); },
-  async listMyCompanies() { return request<Paginated<Company>>("/users/me/companies?page=1&limit=100"); },
-  async listMyEvents() { return request<Paginated<Event>>("/users/me/events?status=upcoming&page=1&limit=100"); },
-  async listCompanyMessages(companyId: number) { return request<Paginated<CompanyMessage>>(`/companies/${companyId}/messages?page=1&limit=100`); },
+  async listMyCompanies(options: PageOptions = {}) { return request<Paginated<Company>>(`/users/me/companies${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async listMyEvents(options: PageOptions = {}) { return request<Paginated<Event>>(`/users/me/events${query({ status: "upcoming", page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async listCompanyMessages(companyId: number, options: PageOptions = {}) { return request<Paginated<CompanyMessage>>(`/companies/${companyId}/messages${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async sendCompanyMessage(companyId: number, text: string) { return request<CompanyMessage>(`/companies/${companyId}/messages`, { method: "POST", body: JSON.stringify({ text }) }); },
   async loginAdmin(username: string, password: string) {
     const result = await this.loginWithPassword(username, password);
@@ -123,16 +127,17 @@ export const backendApi = {
     return result;
   },
   async getAdminDashboard() { return request<{ usersTotal: number; activeEvents: number; pendingReports: number; newRegistrations30d: number }>("/admin/dashboard"); },
-  async listAdminUsers(_search = "") { return request<Paginated<User>>("/admin/users?page=1&limit=100"); },
+  async listAdminUsers(search = "", options: PageOptions = {}) { return request<Paginated<User>>(`/admin/users${query({ search, page: options.page ?? 1, limit: options.limit ?? 25 })}`); },
   async getAdminUser(id: number) { return request<User>(`/admin/users/${id}`); },
   async setAdminUserStatus(id: number, status: User["status"]) { return request<User>(`/admin/users/${id}/${status === "banned" ? "ban" : "unban"}`, { method: "POST" }); },
-  async listAdminEvents(_search = "", status?: Event["status"]) { return request<Paginated<Event>>(`/admin/events${query({ status, page: 1, limit: 100 })}`); },
+  async listAdminEvents(search = "", status?: Event["status"], options: PageOptions = {}) { return request<Paginated<Event>>(`/admin/events${query({ search, status, page: options.page ?? 1, limit: options.limit ?? 25 })}`); },
   async getAdminEvent(id: number) { return request<Event>(`/admin/events/${id}`); },
   async updateAdminEvent(id: number, input: Partial<Event>) { return request<Event>(`/admin/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }); },
   async moderateAdminEvent(id: number, status: Event["status"], reason?: string) { const action = status === "active" ? "approve" : status === "blocked" ? "block" : "reject"; return request<Event>(`/admin/events/${id}/${action}`, { method: "POST", body: reason ? JSON.stringify({ reason }) : undefined }); },
-  async listAdminCompanies() { return request<Paginated<Company>>("/admin/companies?page=1&limit=100"); },
+  async listAdminCompanies(options: PageOptions = {}) { return request<Paginated<Company>>(`/admin/companies${query({ page: options.page ?? 1, limit: options.limit ?? 25 })}`); },
   async blockAdminCompany(id: number) { return request<Company>(`/admin/companies/${id}/block`, { method: "POST" }); },
-  async listAdminReports(status?: Report["status"]) { return request<Paginated<Report>>(`/admin/reports${query({ status, page: 1, limit: 100 })}`); },
+  async unblockAdminCompany(id: number) { return request<Company>(`/admin/companies/${id}/unblock`, { method: "POST" }); },
+  async listAdminReports(status?: Report["status"], options: PageOptions = {}) { return request<Paginated<Report>>(`/admin/reports${query({ status, page: options.page ?? 1, limit: options.limit ?? 25 })}`); },
   async moderateAdminReport(id: number, status: "resolved" | "rejected") { return request<Report>(`/admin/reports/${id}/${status === "resolved" ? "resolve" : "reject"}`, { method: "POST" }); },
   reset() { window.location.reload(); },
 };

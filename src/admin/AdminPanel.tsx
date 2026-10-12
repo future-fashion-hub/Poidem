@@ -105,7 +105,8 @@ function EventActions() {
 
 function CompanyActions() {
   const record = useRecordContext<Company>();
-  if (!record || record.status === "blocked") return <Typography variant="caption" color="text.secondary">Заблокирована</Typography>;
+  if (!record) return null;
+  if (record.status === "blocked") return <RowAction resource="companies" nextStatus="active" label="Разблокировать" color="success" confirmText={`Разблокировать компанию «${record.name}»?`} />;
   return <RowAction resource="companies" nextStatus="blocked" label="Заблокировать" color="error" confirmText={`Заблокировать компанию «${record.name}»?`} />;
 }
 

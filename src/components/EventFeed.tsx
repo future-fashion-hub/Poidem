@@ -3,27 +3,32 @@ import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
 import { createPortal } from "react-dom";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { DictionaryItem, Event } from "../api/types";
+import type { Favorite } from "../api/types";
+import { ApiError } from "../api/types";
+import { backendMode, api } from "../api";
+import { collectPages } from "../api/pagination";
 import EventIcon from "./EventIcon";
 
 type FeedAction = "skip" | "save";
-type Props = { events: Event[]; categories: DictionaryItem[]; cities: DictionaryItem[]; onOpen: (event: Event) => void; favoritesOpen: boolean; onFavoritesChange: (open: boolean) => void };
+type Props = { userId: number | null; events: Event[]; categories: DictionaryItem[]; cities: DictionaryItem[]; onOpen: (event: Event) => void; favoritesOpen: boolean; onFavoritesChange: (open: boolean) => void };
 type ActionRecord = Record<number, FeedAction>;
 const storageKey = "poidem-event-feed-actions";
 const savedEventsKey = "poidem-event-feed-saved-events";
 
-function readActions(): ActionRecord {
+function readActions(key = storageKey): ActionRecord {
   try {
-    const value = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value).filter(([, action]) => action === "skip" || action === "save")) as ActionRecord;
   } catch { return {}; }
 }
-function saveActions(next: ActionRecord) {
-  try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Keep the current session usable when storage is unavailable. */ }
+function saveActions(next: ActionRecord, key = storageKey) {
+  try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* Keep the current session usable when storage is unavailable. */ }
 }
-function readSavedEvents(): Record<number, Event> {
+function readImportDone(key: string) { try { return localStorage.getItem(key) === "1"; } catch { return false; } }
+function readSavedEvents(key = savedEventsKey): Record<number, Event> {
   try {
-    const value = JSON.parse(localStorage.getItem(savedEventsKey) ?? "{}");
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value).filter(([, event]) => {
       if (!event || typeof event !== "object") return false;
@@ -32,8 +37,8 @@ function readSavedEvents(): Record<number, Event> {
     })) as Record<number, Event>;
   } catch { return {}; }
 }
-function persistSavedEvents(next: Record<number, Event>) {
-  try { localStorage.setItem(savedEventsKey, JSON.stringify(next)); } catch { /* Keep the current session usable when storage is unavailable. */ }
+function persistSavedEvents(next: Record<number, Event>, key = savedEventsKey) {
+  try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* Keep the current session usable when storage is unavailable. */ }
 }
 function FeedIcon({ name, size = 24 }: { name: "spark" | "close" | "heart" | "check" | "undo"; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -45,9 +50,22 @@ function FeedIcon({ name, size = 24 }: { name: "spark" | "close" | "heart" | "ch
   </svg>;
 }
 
-export default function EventFeed({ events, categories, cities, onOpen, favoritesOpen, onFavoritesChange }: Props) {
-  const [actions, setActions] = useState<ActionRecord>(readActions);
-  const [savedById, setSavedById] = useState<Record<number, Event>>(readSavedEvents);
+export default function EventFeed({ userId, events, categories, cities, onOpen, favoritesOpen, onFavoritesChange }: Props) {
+  const serverFavorites = userId !== null;
+  const actionKey = serverFavorites ? `${storageKey}:${backendMode ? "backend" : "demo"}:user:${userId}` : `${storageKey}:${backendMode ? "backend" : "demo"}:guest`;
+  const guestSavedKey = `${savedEventsKey}:${backendMode ? "backend" : "demo"}:guest`;
+  const [actions, setActions] = useState<ActionRecord>(() => {
+    const stored = readActions(actionKey);
+    return serverFavorites ? Object.fromEntries(Object.entries(stored).filter(([, action]) => action === "skip")) : stored;
+  });
+  const [savedById, setSavedById] = useState<Record<number, Event>>(() => serverFavorites ? {} : readSavedEvents(guestSavedKey));
+  const [remoteFavorites, setRemoteFavorites] = useState<Favorite[]>([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(serverFavorites);
+  const [favoritesError, setFavoritesError] = useState("");
+  const importMarker = `poidem-favorites-imported:${backendMode ? "backend" : "demo"}:${userId}`;
+  const [legacyIds] = useState(() => Object.entries(readActions()).filter(([, action]) => action === "save").map(([id]) => Number(id)));
+  const [importDone, setImportDone] = useState(() => readImportDone(importMarker));
+  const [importing, setImporting] = useState(false);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [drag, setDrag] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -62,6 +80,19 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
   const actionsRef = useRef<HTMLDivElement>(null);
   const effectRef = useRef<HTMLDivElement>(null);
   const favoritesTriggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!serverFavorites) return;
+    let alive = true;
+    setFavoritesLoading(true);
+    collectPages(options => api.listFavorites(options), 20, true).then(result => {
+      if (!alive) return;
+      setRemoteFavorites(result.items);
+      setActions(previous => ({ ...previous, ...Object.fromEntries(result.items.map(item => [item.eventId, "save" as const])) }));
+      setFavoritesError("");
+    }).catch(error => { if (alive) setFavoritesError(error instanceof Error ? error.message : "Не удалось загрузить избранное"); })
+      .finally(() => { if (alive) setFavoritesLoading(false); });
+    return () => { alive = false; };
+  }, [serverFavorites, userId]);
   useEffect(() => {
     const page = pageRef.current;
     const effect = effectRef.current;
@@ -101,8 +132,10 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
   const activeEvents = useMemo(() => events.filter(item => item.status === "active" && (categoryId === null || item.categoryId === categoryId)), [events, categoryId]);
   const queue = useMemo(() => activeEvents.filter(item => !actions[item.id]), [actions, activeEvents]);
   const event = queue[0];
-  const savedCount = Object.values(actions).filter(item => item === "save").length;
-  const favorites = useMemo(() => Object.entries(actions).filter(([, action]) => action === "save").map(([id]) => ({ id: Number(id), event: events.find((item) => item.id === Number(id)) ?? savedById[Number(id)] ?? null })).reverse(), [actions, events, savedById]);
+  const savedCount = serverFavorites ? remoteFavorites.length : Object.values(actions).filter(item => item === "save").length;
+  const favorites = useMemo(() => serverFavorites
+    ? remoteFavorites.map(item => ({ id: item.eventId, event: item.event, unavailableReason: item.unavailableReason }))
+    : Object.entries(actions).filter(([, action]) => action === "save").map(([id]) => ({ id: Number(id), event: events.find((item) => item.id === Number(id)) ?? savedById[Number(id)] ?? null, unavailableReason: null })).reverse(), [serverFavorites, remoteFavorites, actions, events, savedById]);
   const progress = activeEvents.length ? (activeEvents.length - queue.length) / activeEvents.length : 0;
   const category = categories.find(item => item.id === event?.categoryId)?.name ?? "Событие";
   const city = cities.find(item => item.id === event?.cityId)?.name;
@@ -122,15 +155,27 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
     setDragging(false);
     setExit(action);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
+      if (action === "save" && serverFavorites) {
+        try {
+          await api.saveFavorite(id);
+          setRemoteFavorites(previous => previous.some(item => item.eventId === id) ? previous : [{ eventId: id, savedAt: new Date().toISOString(), available: true, unavailableReason: null, event }, ...previous]);
+          setFavoritesError("");
+        } catch (error) {
+          setFavoritesError(error instanceof Error ? error.message : "Не удалось сохранить событие");
+          setAnnouncement("Не удалось сохранить событие");
+          setDrag(0); setExit(null); busy.current = false; timer.current = null;
+          return;
+        }
+      }
       setActions(previous => {
         const next = { ...previous, [id]: action };
-        saveActions(next);
+        saveActions(serverFavorites ? Object.fromEntries(Object.entries(next).filter(([, value]) => value === "skip")) : next, actionKey);
         return next;
       });
-      if (action === "save") setSavedById(previous => {
+      if (action === "save" && !serverFavorites) setSavedById(previous => {
         const next = { ...previous, [id]: event };
-        persistSavedEvents(next);
+        persistSavedEvents(next, guestSavedKey);
         return next;
       });
       setLastAction({ id, action });
@@ -141,19 +186,27 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
       timer.current = null;
     }, reduced ? 0 : 320);
   };
-  const undo = () => {
+  const undo = async () => {
     if (!lastAction || busy.current) return;
+    if (lastAction.action === "save" && serverFavorites) {
+      busy.current = true;
+      try {
+        await api.removeFavorite(lastAction.id);
+        setRemoteFavorites(previous => previous.filter(item => item.eventId !== lastAction.id));
+      } catch (error) { setFavoritesError(error instanceof Error ? error.message : "Не удалось отменить сохранение"); busy.current = false; return; }
+      busy.current = false;
+    }
     cancelDrag();
     setActions(previous => {
       const next = { ...previous };
       delete next[lastAction.id];
-      saveActions(next);
+      saveActions(serverFavorites ? Object.fromEntries(Object.entries(next).filter(([, value]) => value === "skip")) : next, actionKey);
       return next;
     });
-    if (lastAction.action === "save") setSavedById(previous => {
+    if (lastAction.action === "save" && !serverFavorites) setSavedById(previous => {
       const next = { ...previous };
       delete next[lastAction.id];
-      persistSavedEvents(next);
+      persistSavedEvents(next, guestSavedKey);
       return next;
     });
     setLastAction(null);
@@ -164,26 +217,48 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
     cancelDrag();
     setActions(previous => {
       const next = Object.fromEntries(Object.entries(previous).filter(([, action]) => action === "save")) as ActionRecord;
-      saveActions(next);
+      saveActions(serverFavorites ? {} : next, actionKey);
       return next;
     });
     setLastAction(null);
   };
-  const removeSaved = (id: number) => {
+  const removeSaved = async (id: number) => {
+    if (serverFavorites) {
+      try { await api.removeFavorite(id); setRemoteFavorites(previous => previous.filter(item => item.eventId !== id)); }
+      catch (error) { setFavoritesError(error instanceof Error ? error.message : "Не удалось убрать событие"); return; }
+    }
     setActions(previous => {
       const next = { ...previous };
       delete next[id];
-      saveActions(next);
+      saveActions(serverFavorites ? Object.fromEntries(Object.entries(next).filter(([, value]) => value === "skip")) : next, actionKey);
       return next;
     });
-    setSavedById(previous => {
+    if (!serverFavorites) setSavedById(previous => {
       const next = { ...previous };
       delete next[id];
-      persistSavedEvents(next);
+      persistSavedEvents(next, guestSavedKey);
       return next;
     });
     if (lastAction?.id === id) setLastAction(null);
     setAnnouncement("Событие убрано из избранного");
+  };
+  const importLegacy = async () => {
+    if (!serverFavorites || importing) return;
+    setImporting(true); setFavoritesError("");
+    let transferred = 0;
+    try {
+      for (const id of legacyIds) {
+        try { await api.saveFavorite(id); transferred++; }
+        catch (error) { if (!(error instanceof ApiError && error.status === 404 && error.code === "EVENT_NOT_FOUND")) throw error; }
+      }
+      const result = await collectPages(options => api.listFavorites(options), 20, true);
+      setRemoteFavorites(result.items);
+      setActions(previous => ({ ...previous, ...Object.fromEntries(result.items.map(item => [item.eventId, "save" as const])) }));
+      try { localStorage.setItem(importMarker, "1"); } catch { /* Session still remembers the explicit import. */ }
+      setImportDone(true);
+      setAnnouncement(`Перенесено событий: ${transferred}`);
+    } catch (error) { setFavoritesError(error instanceof Error ? error.message : "Не удалось перенести избранное"); }
+    finally { setImporting(false); }
   };
   const chooseCategory = (id: number | null) => {
     if (busy.current) return;
@@ -280,12 +355,17 @@ export default function EventFeed({ events, categories, cities, onOpen, favorite
       <footer className="swipe-help"><span>Влево — пропустить · вправо — сохранить</span><small>Сохранение в подборке не записывает вас на мероприятие.</small></footer>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     </div>
-    {favoritesOpen && createPortal(<FavoritesDrawer favorites={favorites} categories={categories} cities={cities} onClose={() => { onFavoritesChange(false); requestAnimationFrame(() => favoritesTriggerRef.current?.focus()); }} onOpen={(item) => { onFavoritesChange(false); onOpen(item); }} onRemove={removeSaved}/>, document.body)}
+    {favoritesOpen && createPortal(<FavoritesDrawer favorites={favorites} loading={favoritesLoading} error={favoritesError} importCount={serverFavorites && !importDone ? legacyIds.length : 0} importing={importing} onImport={importLegacy} categories={categories} cities={cities} onClose={() => { onFavoritesChange(false); requestAnimationFrame(() => favoritesTriggerRef.current?.focus()); }} onOpen={async (item) => { try { const fresh = serverFavorites ? await api.getEvent(item.id) : item; onFavoritesChange(false); onOpen(fresh); } catch (error) { setFavoritesError(error instanceof Error ? error.message : "Событие больше недоступно"); if (serverFavorites && error instanceof ApiError && error.status === 404) void collectPages(options => api.listFavorites(options), 20, true).then(result => setRemoteFavorites(result.items)).catch(() => undefined); } }} onRemove={removeSaved}/>, document.body)}
   </main>;
 }
 
-function FavoritesDrawer({ favorites, categories, cities, onClose, onOpen, onRemove }: {
-  favorites: { id: number; event: Event | null }[];
+function FavoritesDrawer({ favorites, loading, error, importCount, importing, onImport, categories, cities, onClose, onOpen, onRemove }: {
+  favorites: { id: number; event: Event | null; unavailableReason: string | null }[];
+  loading: boolean;
+  error: string;
+  importCount: number;
+  importing: boolean;
+  onImport: () => void;
   categories: DictionaryItem[];
   cities: DictionaryItem[];
   onClose: () => void;
@@ -312,8 +392,11 @@ function FavoritesDrawer({ favorites, categories, cities, onClose, onOpen, onRem
         <div className="favorites-heading-copy"><p>Ваша личная подборка</p><h2 id="favorites-title">Избранное<span>.</span></h2><span>{favorites.length} {favorites.length % 10 === 1 && favorites.length % 100 !== 11 ? "событие" : [2, 3, 4].includes(favorites.length % 10) && ![12, 13, 14].includes(favorites.length % 100) ? "события" : "событий"}</span></div>
         <button ref={closeRef} type="button" className="favorites-close" aria-label="Закрыть избранное" onClick={onClose}><FeedIcon name="close" size={21}/></button>
       </header>
+      {importCount > 0 && <div className="favorites-import"><p>На этом устройстве есть прежние сохранения ({importCount}). Перенести доступные события в аккаунт? Снимки карточек не переносятся.</p><button type="button" disabled={importing || loading} onClick={onImport}>{importing ? "Переносим…" : "Перенести"}</button></div>}
+      {loading && <p className="chat-list-notice" role="status">Загружаем избранное…</p>}
+      {error && <p className="chat-error" role="alert">{error}</p>}
       {favorites.length ? <div className="favorites-list" aria-label="Сохранённые события">
-        {favorites.map(({ id, event }) => {
+        {favorites.map(({ id, event, unavailableReason }) => {
           const category = categories.find((item) => item.id === event?.categoryId)?.name ?? "Событие";
           const city = cities.find((item) => item.id === event?.cityId)?.name;
           const date = event ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt)) : "";
@@ -322,7 +405,7 @@ function FavoritesDrawer({ favorites, categories, cities, onClose, onOpen, onRem
             <div className="favorites-card-content">
               {date && <time dateTime={event?.startsAt}>{date}</time>}
               <h3>{event?.title ?? "Событие больше недоступно"}</h3>
-              <p>{event ? [city, event.locationName].filter(Boolean).join(" · ") : "Можно убрать его из избранного."}</p>
+              <p>{event ? [city, event.locationName].filter(Boolean).join(" · ") : (unavailableReason || "Можно убрать его из избранного.")}</p>
               <div className="favorites-card-actions">
                 {event && <button type="button" className="favorites-open-event" onClick={() => onOpen(event)}>Открыть событие <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 19 19 5M7 5h12v12"/></svg></button>}
                 <button type="button" className="favorites-remove" onClick={() => onRemove(id)} aria-label={event ? `Убрать «${event.title}» из избранного` : "Убрать недоступное событие из избранного"}><FavoriteRounded aria-hidden="true"/>Убрать</button>
@@ -330,7 +413,7 @@ function FavoritesDrawer({ favorites, categories, cities, onClose, onOpen, onRem
             </div>
           </article>;
         })}
-      </div> : <div className="favorites-empty"><div aria-hidden="true"><FeedIcon name="heart" size={36}/></div><h3>Пока ничего не сохранено</h3><p>Сохраняйте события в ленте — здесь они будут ждать вашего решения.</p><button type="button" onClick={onClose}>Вернуться к ленте</button></div>}
+      </div> : !loading && !error ? <div className="favorites-empty"><div aria-hidden="true"><FeedIcon name="heart" size={36}/></div><h3>Пока ничего не сохранено</h3><p>Сохраняйте события в ленте — здесь они будут ждать вашего решения.</p><button type="button" onClick={onClose}>Вернуться к ленте</button></div> : null}
       <footer className="favorites-footer">Сохранение не означает запись на мероприятие.</footer>
     </section>
   </div>;

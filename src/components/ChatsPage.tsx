@@ -6,13 +6,15 @@ import SendRounded from "@mui/icons-material/SendRounded";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
 import { api, backendMode } from "../api";
-import { connectCompanyChat, type ChatConnection } from "../api/companyChatSocket";
+import { backendApi } from "../api/backendApi";
+import { collectPages } from "../api/pagination";
+import { connectCompanyChat, type ChatConnection, type ChatState } from "../api/companyChatSocket";
 import type { Company, CompanyMessage } from "../api/types";
 
-type ConnectionState = "connecting" | "connected" | "disconnected" | "error" | "demo";
+type ConnectionState = ChatState | "demo";
 const stateLabel: Record<ConnectionState, string> = {
   connecting: "Подключаемся…", connected: "Чат подключён",
-  disconnected: "Соединение прервано", error: "Не удалось подключиться", demo: "Чат компании",
+  reconnecting: "Переподключаемся…", disconnected: "Соединение прервано", error: "Не удалось подключиться", demo: "Чат компании",
 };
 const messageTime = (date: string) => new Date(date).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 const dayLabel = (date: string) => new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
@@ -39,7 +41,7 @@ export default function ChatsPage({ userId }: { userId: number }) {
 
   useEffect(() => {
     let alive = true;
-    api.listMyCompanies().then(result => {
+    collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()).then(result => {
       if (!alive) return;
       const available = result.items.filter(item => item.status === "active");
       setCompanies(available); setSelected(available[0] ?? null);
@@ -58,25 +60,29 @@ export default function ChatsPage({ userId }: { userId: number }) {
     if (id === null) return;
     let alive = true;
     let currentSocket: ChatConnection | null = null;
+    let hasConnected = false;
+    const mergeMessages = (incoming: CompanyMessage[]) => setMessages(live => {
+      const unique = new Map(incoming.map(message => [message.id, message]));
+      live.forEach(message => unique.set(message.id, message));
+      return [...unique.values()].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
     setHistoryLoading(true);
-    api.listCompanyMessages(id).then(result => {
+    collectPages(options => backendMode ? backendApi.listCompanyMessages(id, options) : api.listCompanyMessages(id)).then(result => {
       if (!alive) return;
-      setMessages(live => {
-        const unique = new Map(result.items.map(message => [message.id, message]));
-        live.forEach(message => unique.set(message.id, message));
-        return [...unique.values()].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      });
+      mergeMessages(result.items);
     }).catch(caught => { if (alive) setError(caught instanceof Error ? caught.message : "Не удалось загрузить сообщения"); })
       .finally(() => { if (alive) setHistoryLoading(false); });
     if (backendMode) {
-      void connectCompanyChat(id, message => {
+      currentSocket = connectCompanyChat(id, message => {
         if (!alive || message.companyId !== id) return;
         setMessages(items => items.some(item => item.id === message.id) ? items : [...items, message]);
-      }, state => { if (alive) setConnection(state); }).then(next => {
-        if (!alive) { next?.close(); return; }
-        currentSocket = next; socket.current = next;
-        if (!next) setConnection("error");
-      }).catch(() => { if (alive) setConnection("error"); });
+      }, state => { if (alive) { setConnection(state); if (state === "connected") {
+        setError("");
+        if (hasConnected) void collectPages(options => backendApi.listCompanyMessages(id, options)).then(result => { if (alive) mergeMessages(result.items); }).catch(error => { if (alive) setError(error instanceof Error ? error.message : "Не удалось обновить сообщения"); });
+        hasConnected = true;
+      } } }, message => { if (alive) setError(message); });
+      socket.current = currentSocket;
+      if (!currentSocket) { setConnection("error"); setError("Адрес чата не настроен"); }
     }
     return () => { alive = false; currentSocket?.close(); if (socket.current === currentSocket) socket.current = null; };
   }, [selected?.id]);
@@ -130,8 +136,8 @@ export default function ChatsPage({ userId }: { userId: number }) {
               </Fragment>;
             })}
           </div>
-          {error && <p className="chat-error" role="alert">{error}</p>}
-          <form onSubmit={send} className="chat-composer"><label className="sr-only" htmlFor="company-chat-message">Сообщение компании</label><textarea id="company-chat-message" rows={2} value={text} maxLength={2000} disabled={!canSend} onChange={event => setDrafts(previous => ({ ...previous, [selected.id]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={canSend ? "Напишите своей компании…" : sending ? "Отправляем…" : "Ожидаем соединения…"}/><button type="submit" disabled={!canSend || !text.trim()} aria-label="Отправить сообщение"><SendRounded/></button><div className="chat-composer-hint"><span>Enter — отправить · Shift + Enter — новая строка</span><span>{text.length}/2000</span></div></form>
+          {error && <p className="chat-error" role="alert">{error}{backendMode && connection !== "connected" && <button type="button" onClick={() => socket.current?.retry()}>Повторить подключение</button>}</p>}
+          <form onSubmit={send} className="chat-composer"><label className="sr-only" htmlFor="company-chat-message">Сообщение компании</label><textarea id="company-chat-message" rows={2} value={text} maxLength={2000} onChange={event => setDrafts(previous => ({ ...previous, [selected.id]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={canSend ? "Напишите своей компании…" : "Напишите сообщение — оно останется здесь до подключения…"}/><button type="submit" disabled={!canSend || !text.trim()} aria-label="Отправить сообщение"><SendRounded/></button><div className="chat-composer-hint"><span>Enter — отправить · Shift + Enter — новая строка</span><span>{text.length}/2000</span></div></form>
         </> : <div className="chat-empty"><span><ForumOutlined fontSize="large"/></span><h2>Ваши разговоры — здесь</h2><p>Выберите компанию слева, чтобы открыть переписку.</p></div>}
       </div>
     </section>

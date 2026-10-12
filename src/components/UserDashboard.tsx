@@ -7,6 +7,8 @@ import ArrowOutward from "@mui/icons-material/ArrowOutward"
 import EditOutlined from "@mui/icons-material/EditOutlined"
 import { useEffect, useState } from "react"
 import { api } from "../api"
+import { backendApi, backendMode } from "../api/backendApi"
+import { collectPages } from "../api/pagination"
 import type {
   Application,
   Company,
@@ -72,9 +74,9 @@ export default function UserDashboard({
     setError("")
     try {
       const [a, b, c] = await Promise.all([
-        api.listMyEvents(),
-        api.listMyCompanies(),
-        api.listMyApplications(),
+        collectPages(options => backendMode ? backendApi.listMyEvents(options) : api.listMyEvents()),
+        collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()),
+        collectPages(options => backendMode ? backendApi.listMyApplications(options) : api.listMyApplications()),
       ])
       setEvents(a.items)
       setCompanies(b.items)
@@ -259,8 +261,8 @@ function CompanyManager({
   const load = async () => {
     try {
       const [memberList, applicationList] = await Promise.all([
-        api.listCompanyMembers(company.id),
-        api.listCompanyApplications(company.id),
+        collectPages(options => backendMode ? backendApi.listCompanyMembers(company.id, options) : api.listCompanyMembers(company.id)),
+        collectPages(options => backendMode ? backendApi.listCompanyApplications(company.id, options) : api.listCompanyApplications(company.id)),
       ])
       setMembers(memberList.items)
       setApplications(applicationList.items)

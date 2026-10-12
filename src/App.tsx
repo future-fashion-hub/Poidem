@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { backendApi, backendMode } from "./api/backendApi";
+import { collectPages } from "./api/pagination";
 import { ApiError, type Application, type Company, type DictionaryItem, type Event, type User } from "./api/types";
 import EventMap from "./components/EventMap";
 import Globe from "./components/Globe";
@@ -88,23 +90,26 @@ export default function App() {
   };
 
   useEffect(() => {
-    Promise.all([api.dictionaries(), api.listEvents()]).then(([dicts, list]) => {
-      setCities(dicts.cities); setCategories(dicts.categories); setInterests(dicts.interests); setEvents(list.items);
-    }).catch(handleError).finally(() => setLoading(false));
+    api.dictionaries().then(dicts => {
+      setCities(dicts.cities); setCategories(dicts.categories); setInterests(dicts.interests);
+    }).catch(handleError);
     // A catalogue failure must not prevent restoring the user's session.
     api.getCurrentUser().then(async (currentUser) => {
       setUser(currentUser);
-      setJoinedCompanyIds((await api.listMyCompanies()).items.map((company) => company.id));
+      setJoinedCompanyIds((await collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies())).items.map((company) => company.id));
     }).catch(() => null).finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
-    if (loading) return;
+    let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      api.listEvents({ search, cityId: cityId || undefined, categoryId: categoryId || undefined, sort }).then((list) => setEvents(list.items)).catch(handleError).finally(() => setLoading(false));
+      collectPages(options => api.listEvents({ search, cityId: cityId || undefined, categoryId: categoryId || undefined, sort }, options))
+        .then(list => { if (active) setEvents(list.items); })
+        .catch(error => { if (active) handleError(error); })
+        .finally(() => { if (active) setLoading(false); });
     }, 180);
-    return () => window.clearTimeout(timer);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [search, cityId, categoryId, sort]);
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export default function App() {
 
   const openEvent = async (event: Event) => {
     setSelected(event); setCompanies([]);
-    try { setCompanies((await api.listEventCompanies(event.id)).items); } catch (error) { handleError(error); }
+    try { setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(event.id, options) : api.listEventCompanies(event.id))).items); } catch (error) { handleError(error); }
   };
   const authenticate = async (provider: "google" | "telegram" | "vk") => {
     try { const result = await api.login(provider); setUser(result.user); setAuthOpen(false); flash({ kind: "success", text: "Вы вошли в демо-аккаунт" }); } catch (error) { handleError(error); }
@@ -159,7 +164,7 @@ export default function App() {
     setUser(result.user); setAuthOpen(false); setView(result.user.isProfileComplete ? "home" : "profile");
   };
   const requireAuth = (action: () => void) => user ? action() : setAuthOpen(true);
-  const refreshCompanies = async () => selected && setCompanies((await api.listEventCompanies(selected.id)).items);
+  const refreshCompanies = async () => selected && setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(selected.id, options) : api.listEventCompanies(selected.id))).items);
   const handleCompanyAction = (company: Company) => requireAuth(async () => {
     try {
       if (company.joinType === "open") { await api.joinOpenCompany(company.id); setJoinedCompanyIds((ids) => [...new Set([...ids, company.id])]); flash({ kind: "success", text: `Вы присоединились к «${company.name}»` }); }
@@ -176,7 +181,7 @@ export default function App() {
     {!user && (view === "chats" || view === "profile") && <main className="mx-auto max-w-2xl px-5 py-16"><h1 className="text-2xl font-extrabold">{authLoading ? "Загружаем ваш аккаунт…" : "Войдите в аккаунт"}</h1>{!authLoading && <><p className="mt-3 text-[#52705a]">Этот раздел доступен после входа.</p><button onClick={() => setAuthOpen(true)} className="cta-lime mt-6 rounded-xl px-5 py-3 font-bold">Войти</button></>}</main>}
     {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
     {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
-    {!onboardingRequired && view === "feed" ? <EventFeed events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
+    {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
     {!onboardingRequired && view === "profile" && user ? <UserDashboard user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onCreate={() => requireAuth(() => setEventCreateOpen(true))} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
@@ -185,7 +190,7 @@ export default function App() {
     {selected && !secondaryModalOpen && <EventDrawer event={selected} city={cities.find((item) => item.id === selected.cityId)} category={categories.find((item) => item.id === selected.categoryId)} companies={companies} joinedCompanyIds={joinedCompanyIds} onClose={() => setSelected(null)} onJoin={handleCompanyAction} onSolo={() => requireAuth(async () => { try { await mockApi.joinEventSolo(selected.id); flash({ kind: "success", text: "Событие добавлено в ваши планы" }); } catch (error) { handleError(error); } })} onCreate={() => requireAuth(() => setCompanyOpen(true))} />}
     {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onRegister={() => { setAuthOpen(false); setRegisterOpen(true); }} onLogin={authenticate} onAdminLogin={authenticateAdmin} />}
     {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} onLogin={() => { setRegisterOpen(false); setAuthOpen(true); }} onRegister={register} onPasswordRegister={registerWithPassword} />}
-    {companyOpen && selected && <CreateCompanyModal event={selected} onClose={() => setCompanyOpen(false)} onCreated={async () => { setCompanyOpen(false); await refreshCompanies(); setJoinedCompanyIds((await api.listMyCompanies()).items.map((company) => company.id)); flash({ kind: "success", text: "Компания создана" }); }} />}
+    {companyOpen && selected && <CreateCompanyModal event={selected} onClose={() => setCompanyOpen(false)} onCreated={async () => { setCompanyOpen(false); await refreshCompanies(); setJoinedCompanyIds((await collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies())).items.map((company) => company.id)); flash({ kind: "success", text: "Компания создана" }); }} />}
     {eventCreateOpen && <EventCreateModal cities={cities} categories={categories} onClose={() => setEventCreateOpen(false)} onCreated={(event) => { setEventCreateOpen(false); flash({ kind: "success", text: `«${event.title}» отправлено на модерацию` }); setView("profile"); }} />}
     {notice && <div role="status" className={`fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-2xl px-5 py-3 text-sm font-semibold shadow-2xl ${notice.kind === "success" ? "bg-[#102318] text-white" : "bg-[#9e3128] text-white"}`}><Icon name={notice.kind === "success" ? "check" : "close"} size={18}/>{notice.text}</div>}
   </div>;

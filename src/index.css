@@ -558,6 +558,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .favorites-heading-copy > span { display: block; margin-top: 6px; color: #587160; font-size: 13px; }
 .favorites-close { display: grid; flex: 0 0 auto; width: 44px; height: 44px; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: #fff; color: var(--ink); cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
 .favorites-close:hover { border-color: #b5cbae; background: #f1f7e9; }
+.favorites-import { display: flex; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #dce8d2; background: #eef7e6; }
+.favorites-import p { flex: 1; color: #365743; font-size: 11px; line-height: 1.5; }
+.favorites-import button { flex: 0 0 auto; min-height: 40px; padding: 9px 13px; border-radius: 10px; background: var(--ink); color: #e1f8b1; font-size: 11px; font-weight: 800; cursor: pointer; }
+.favorites-import button:disabled { opacity: .55; cursor: wait; }
 .favorites-list { display: grid; align-content: start; gap: 16px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 24px 32px 32px; }
 .favorites-card { display: grid; grid-template-columns: 154px minmax(0, 1fr); min-height: 184px; overflow: hidden; border: 1px solid #d6e3d0; border-radius: 22px; background: #fff; box-shadow: 0 8px 24px rgba(16, 35, 24, .05); transition: border-color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast); }
 .favorites-card:hover { border-color: #aecba3; box-shadow: 0 13px 28px rgba(16, 35, 24, .09); transform: translateY(-2px); }

@@ -117,6 +117,8 @@ export type AdminDashboard = {
 
 export type Pagination = { page: number; limit: number; total: number; totalPages: number };
 export type Paginated<T> = { items: T[]; pagination: Pagination };
+export type PageOptions = { page?: number; limit?: number };
+export type Favorite = { eventId: number; savedAt: string; available: boolean; unavailableReason: string | null; event: Event | null };
 
 export class ApiError extends Error {
   constructor(
