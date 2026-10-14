@@ -911,8 +911,12 @@ h1, h2, h3, h4, h5, h6 {
 .site-date-popover .rdp-selected .rdp-day_button { padding: 4px; border: 0; color: #bdf238; background: #102318; background-clip: content-box; }
 .site-date-popover .rdp-today:not(.rdp-selected) .rdp-day_button { border-color: #b7df58; color: #31513a; background: #f4fadc; }
 .site-date-popover .rdp-outside { opacity: .34; }
-.site-date-time { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: #f3f7ef; color: #607064; font-size: 11px; font-weight: 750; }
-.site-date-time input { min-height: 36px; padding: 6px 9px; border: 1px solid #d7e2d4; border-radius: 9px; color: #102318; background: white; font-size: 12px; }
+.site-date-time { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: #f3f7ef; color: #607064; font-size: 11px; font-weight: 750; }
+.site-time-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; min-width: 0; }
+.site-time-fields > .site-select { min-width: 0; }
+.site-time-fields .site-select-trigger { min-height: 44px; padding: 8px 10px; gap: 6px; font-size: 16px; font-variant-numeric: tabular-nums; }
+.site-time-fields .site-select-menu { top: auto; bottom: calc(100% + 6px); max-height: min(190px, 35dvh); overscroll-behavior: contain; }
+.site-time-fields .site-select-menu button { min-height: 44px; justify-content: center; padding-inline: 6px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .site-date-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e6ece2; }
 .site-date-actions button { min-height: 36px; padding: 8px 11px; border-radius: 10px; color: #657467; font-size: 11px; font-weight: 780; }
 @media (hover: hover) and (pointer: fine) {

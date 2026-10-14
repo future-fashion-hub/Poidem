@@ -20,12 +20,25 @@ export default function SiteSelect({ value, options, onChange, id, ariaLabel, cl
   const controlId = id ?? `site-select-${generatedId}`;
   const listId = `${controlId}-list`;
   const root = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLUListElement>(null);
   const selectedIndex = Math.max(0, options.findIndex((option) => String(option.value) === String(value)));
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(selectedIndex);
   const selected = options[selectedIndex] ?? options[0];
 
   useEffect(() => setHighlighted(selectedIndex), [selectedIndex]);
+
+  useEffect(() => {
+    if (!open) return;
+    const list = menu.current;
+    const option = list?.querySelector<HTMLElement>(`[id="${listId}-${highlighted}"]`);
+    if (!list || !option) return;
+    // Scroll only the options, never the containing form or iPhone viewport.
+    const top = option.offsetTop;
+    const bottom = top + option.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+  }, [open, highlighted, listId]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +94,7 @@ export default function SiteSelect({ value, options, onChange, id, ariaLabel, cl
       <span>{selected?.label ?? "Выберите значение"}</span>
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m7 10 5 5 5-5"/></svg>
     </button>
-    {open ? <ul id={listId} role="listbox" aria-labelledby={controlId} className="site-select-menu">
+    {open ? <ul ref={menu} id={listId} role="listbox" aria-labelledby={controlId} className="site-select-menu">
       {options.map((option, index) => <li key={`${option.value}-${index}`}>
         <button
           id={`${listId}-${index}`}

@@ -143,7 +143,7 @@ button, a { touch-action: manipulation; }
   .site-date-popover { position: fixed; top: auto; bottom: calc(16px + env(safe-area-inset-bottom)); left: 50%; right: auto; width: min(355px, calc(100vw - 32px)); max-height: calc(100dvh - 32px - env(safe-area-inset-bottom)); overflow-y: auto; transform: translateX(-50%); animation: none; padding: 12px; }
   .site-date-heading .site-select-trigger { min-height: 40px; font-size: 12px; }
   .site-date-popover .rdp-root { --rdp-day-width: 36px; --rdp-day-height: 40px; }
-  .site-date-time input { min-height: 44px; font-size: 16px; }
+  .site-date-time { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .site-date-actions button { min-height: 44px; font-size: 13px; }
   .auth-card, .onboarding-form, .event-create-dialog, .event-modal-panel, .favorites-drawer { max-width: 100vw; }
   .auth-card { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }

@@ -3,6 +3,7 @@ import { ru } from "@daypicker/react/locale";
 import "@daypicker/react/style.css";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import SiteSelect from "./SiteSelect";
+import { pickerTime } from "./dateTimeValue";
 
 type Props = {
   value: string;
@@ -24,6 +25,8 @@ const parseDay = (value: string) => {
 };
 
 const dayValue = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+const hours = Array.from({ length: 24 }, (_, value) => ({ value: String(value).padStart(2, "0"), label: String(value).padStart(2, "0") }));
+const minutes = Array.from({ length: 60 }, (_, value) => ({ value: String(value).padStart(2, "0"), label: String(value).padStart(2, "0") }));
 
 export default function SiteDatePicker({ value, onChange, includeTime = false, max, min, placeholder = "Выберите дату", ariaLabel = "Выбрать дату", className = "", id: externalId }: Props) {
   const generatedId = useId();
@@ -35,7 +38,8 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
   const initialMonth = selected ?? maxDate ?? minDate ?? new Date();
   const [month, setMonth] = useState(initialMonth);
   const [open, setOpen] = useState(false);
-  const time = value.includes("T") ? value.slice(11, 16) : "12:00";
+  const [draftTime, setDraftTime] = useState("12:00");
+  const time = value.includes("T") ? pickerTime(value) : draftTime;
   const firstYear = minDate?.getFullYear() ?? (includeTime ? new Date().getFullYear() - 1 : 1920);
   const lastYear = maxDate?.getFullYear() ?? (includeTime ? new Date().getFullYear() + 5 : new Date().getFullYear());
   const years = useMemo(() => Array.from({ length: Math.max(1, lastYear - firstYear + 1) }, (_, index) => firstYear + index), [firstYear, lastYear]);
@@ -70,6 +74,10 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
     onChange(`${dayValue(date)}${includeTime ? `T${time}` : ""}`);
     if (!includeTime) setOpen(false);
   };
+  const chooseTime = (nextTime: string) => {
+    setDraftTime(nextTime);
+    if (selected) onChange(`${dayValue(selected)}T${nextTime}`);
+  };
 
   const labelOptions: Intl.DateTimeFormatOptions = includeTime
     ? { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }
@@ -102,7 +110,11 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
         hideNavigation
         disabled={[...(minDate ? [{ before: minDate }] : []), ...(maxDate ? [{ after: maxDate }] : [])]}
       />
-      {includeTime ? <label className="site-date-time"><span>Время</span><input type="time" value={time} onChange={(event) => selected && onChange(`${dayValue(selected)}T${event.target.value}`)}/></label> : null}
+      {includeTime ? <div className="site-date-time"><span id={`${id}-time-label`}>Время</span><div className="site-time-fields" role="group" aria-labelledby={`${id}-time-label`}>
+        <SiteSelect value={time.slice(0, 2)} options={hours} onChange={(hour) => chooseTime(`${hour}:${time.slice(3, 5)}`)} ariaLabel="Часы"/>
+        <span aria-hidden="true">:</span>
+        <SiteSelect value={time.slice(3, 5)} options={minutes} onChange={(minute) => chooseTime(`${time.slice(0, 2)}:${minute}`)} ariaLabel="Минуты"/>
+      </div></div> : null}
       <div className="site-date-actions">
         {value ? <button type="button" onClick={() => { onChange(""); setOpen(false); }}>Очистить</button> : <span/>}
         <button type="button" className="site-date-done" onClick={() => setOpen(false)}>Готово</button>
