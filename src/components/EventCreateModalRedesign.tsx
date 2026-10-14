@@ -16,6 +16,7 @@ type FieldErrors = Partial<Record<Field, string>>;
 function MapView({ center }: { center: Coordinates | null }) {
   const map = useMap();
   useEffect(() => {
+    map.attributionControl.setPrefix(false);
     map.invalidateSize();
     if (center) {
       if (window.matchMedia("(pointer: coarse), (prefers-reduced-motion: reduce)").matches) map.setView([center.latitude, center.longitude], 11, { animate: false });
