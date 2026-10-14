@@ -720,7 +720,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (hover: hover) and (pointer: fine) {
 .event-map-pin:hover { filter: brightness(1.05); transform: rotate(-45deg) scale(1.12); }
 }
-.event-map-pin--hollow { background: transparent; }
+.event-map-pin--hollow { position: relative; background: transparent; }
+.event-map-pin--hollow::before { position: absolute; inset: 0; content: ""; border-radius: inherit; background: #bdf238; -webkit-mask: radial-gradient(circle at center, transparent 0 13.5px, #000 14px); mask: radial-gradient(circle at center, transparent 0 13.5px, #000 14px); pointer-events: none; }
+.event-map-pin--hollow::after { position: absolute; top: 50%; left: 50%; width: 32px; height: 32px; content: ""; border: 2px solid rgba(255, 255, 255, .95); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .event-map-pin-image {
   display: grid;
   width: 32px;
