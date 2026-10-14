@@ -16,6 +16,43 @@ function loadTypeScript(path) {
 const { distanceKm, nearbyBounds, nearbyEvents, createShakeDetector } = loadTypeScript(fileURLToPath(new URL("./nearby.ts", import.meta.url)));
 const point = { latitude: 55.75, longitude: 37.61 };
 
+function locationService(getCurrentPosition, secure = true) {
+  const module = { exports: {} };
+  const source = readFileSync(new URL("./nearbyPermissions.ts", import.meta.url), "utf8");
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  new Function("window", "navigator", "exports", "module", code)(
+    { isSecureContext: secure }, { geolocation: { getCurrentPosition } }, module.exports, module,
+  );
+  return module.exports.getNearbyLocation;
+}
+
+test("startup and first search share a permission request and reuse the position", async () => {
+  let calls = 0;
+  let complete;
+  const locate = locationService(resolve => { calls++; complete = resolve; });
+  const startup = locate();
+  assert.equal(locate(), startup);
+  const position = { coords: { latitude: 55.75, longitude: 37.61, accuracy: 20 } };
+  complete(position);
+  assert.equal(await startup, position);
+  assert.equal(await locate(), position);
+  assert.equal(calls, 1);
+  const refresh = locate(true);
+  assert.equal(calls, 2);
+  complete(position);
+  await refresh;
+});
+
+test("denied location can be retried, and insecure origins never ask permission", async () => {
+  let calls = 0;
+  const locate = locationService((_resolve, reject) => { calls++; reject({ code: 1 }); });
+  await assert.rejects(locate(), /Доступ к геопозиции закрыт/);
+  await assert.rejects(locate(), /Доступ к геопозиции закрыт/);
+  assert.equal(calls, 2);
+  const insecure = locationService(() => { throw new Error("must not request"); }, false);
+  await assert.rejects(insecure(), /HTTPS/);
+});
+
 test("distance uses geographic coordinates, including the antimeridian", () => {
   assert.equal(distanceKm(point, point), 0);
   const parisLondon = distanceKm({ latitude: 48.8566, longitude: 2.3522 }, { latitude: 51.5074, longitude: -0.1278 });

@@ -126,7 +126,7 @@ export default function ChatsPage({ userId }: { userId: number }) {
           <header className="chat-topbar"><button type="button" className="chat-back" aria-label="К списку чатов" onClick={() => setMobileConversation(false)}><ArrowBackRounded/></button><span className="chat-company-avatar">{selected.name.slice(0, 1).toUpperCase()}</span><div className="chat-topbar-title"><h2>{selected.name}</h2><p><span className={`chat-connection-dot ${connection === "connected" || connection === "demo" ? "is-connected" : ""}`}/>{stateLabel[connection]} · {selected.membersCount} участников</p></div></header>
           <div ref={scrollArea} className="chat-messages" onScroll={event => { const area = event.currentTarget; followLatest.current = area.scrollHeight - area.scrollTop - area.clientHeight < 90; }}>
             {historyLoading && <p className="chat-history-loading" role="status">Загружаем переписку…</p>}
-            {!historyLoading && !messages.length && <div className="chat-empty"><span><ForumOutlined fontSize="large"/></span><h3>Знакомство начинается с «привет»</h3><p>Договоритесь о встрече, задайте вопрос или просто представьтесь своей компании.</p></div>}
+            {!historyLoading && !messages.length && <div className="chat-empty"><span className="chat-empty-icon"><ForumOutlined fontSize="large"/></span><h3>Знакомство начинается с «привет»</h3><p>Договоритесь о встрече, задайте вопрос или просто представьтесь своей компании.</p></div>}
             {messages.map((message, index) => {
               const mine = message.author.id === userId;
               const day = dayLabel(message.createdAt);
@@ -138,7 +138,7 @@ export default function ChatsPage({ userId }: { userId: number }) {
           </div>
           {error && <p className="chat-error" role="alert">{error}{backendMode && connection !== "connected" && <button type="button" onClick={() => socket.current?.retry()}>Повторить подключение</button>}</p>}
           <form onSubmit={send} className="chat-composer"><label className="sr-only" htmlFor="company-chat-message">Сообщение компании</label><textarea id="company-chat-message" rows={2} value={text} maxLength={2000} onChange={event => setDrafts(previous => ({ ...previous, [selected.id]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={canSend ? "Напишите своей компании…" : "Напишите сообщение — оно останется здесь до подключения…"}/><button type="submit" disabled={!canSend || !text.trim()} aria-label="Отправить сообщение"><SendRounded/></button><div className="chat-composer-hint"><span>Enter — отправить · Shift + Enter — новая строка</span><span>{text.length}/2000</span></div></form>
-        </> : <div className="chat-empty"><span><ForumOutlined fontSize="large"/></span><h2>Ваши разговоры — здесь</h2><p>Выберите компанию слева, чтобы открыть переписку.</p></div>}
+        </> : <div className="chat-empty"><span className="chat-empty-icon"><ForumOutlined fontSize="large"/></span><h2>Ваши разговоры — здесь</h2><p>Выберите компанию слева, чтобы открыть переписку.</p></div>}
       </div>
     </section>
     {error && !selected && <p className="chat-error chat-list-error" role="alert">{error}</p>}

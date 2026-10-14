@@ -7,6 +7,7 @@ import ArrowOutwardRounded from "@mui/icons-material/ArrowOutwardRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import { api } from "../api";
 import { collectPages } from "../api/pagination";
+import { getNearbyLocation } from "../api/nearbyPermissions";
 import { createShakeDetector, distanceLabel, nearbyBounds, nearbyEvents, type Coordinates, type NearbyEvent } from "../api/nearby";
 import type { DictionaryItem, Event } from "../api/types";
 import "./nearby.css";
@@ -19,19 +20,6 @@ const radii = [5, 10, 25, 50];
 const motionAPI = () => typeof DeviceMotionEvent === "undefined" ? null : DeviceMotionEvent as MotionConstructor;
 const initialMotionState = (): MotionState => !window.isSecureContext || !motionAPI() ? "unsupported" : motionAPI()?.requestPermission ? "permission" : "available";
 const dateLabel = (value: string) => new Date(value).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-
-function locate(): Promise<GeolocationPosition> {
-  if (!window.isSecureContext) return Promise.reject(new Error("Для геолокации откройте сайт по HTTPS."));
-  if (!navigator.geolocation) return Promise.reject(new Error("Этот браузер не поддерживает геолокацию. Попробуйте Safari или Chrome."));
-  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, error => {
-    const messages: Record<number, string> = {
-      1: "Доступ к геопозиции закрыт. Разрешите его для этого сайта в настройках браузера и повторите поиск.",
-      2: "Не удалось определить местоположение. Проверьте, включена ли геолокация на телефоне, и попробуйте ещё раз.",
-      3: "Определение местоположения заняло слишком много времени. Попробуйте ещё раз у окна или на улице.",
-    };
-    reject(new Error(messages[error.code] ?? "Не удалось определить местоположение. Попробуйте ещё раз."));
-  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }));
-}
 
 export default function NearbyEvents({ open, onOpenChange, suspended, categories, onOpenEvent }: Props) {
   const [motionState, setMotionState] = useState<MotionState>(initialMotionState);
@@ -47,9 +35,10 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   const closeButton = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const runRef = useRef<() => void>(() => undefined);
+  const keyboardOpened = useRef(false);
   const loading = state === "locating" || state === "loading";
 
-  const search = useCallback(async (nextRadius: number, fromTap = false, reusePosition = false) => {
+  const search = useCallback(async (nextRadius: number, fromTap = false, reusePosition = false, refreshPosition = false) => {
     if (busy.current || suspended || document.visibilityState === "hidden") return;
     busy.current = true;
     const current = ++generation.current;
@@ -63,7 +52,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       if (current !== generation.current) return;
       let point = reusePosition ? position.current : null;
       if (!point) {
-        const located = await locate();
+        const located = await getNearbyLocation(refreshPosition);
         if (current !== generation.current) return;
         point = { latitude: located.coords.latitude, longitude: located.coords.longitude };
         position.current = point; setAccuracy(located.coords.accuracy);
@@ -80,7 +69,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     } finally { if (current === generation.current) busy.current = false; }
   }, [motionState, onOpenChange, suspended]);
 
-  useEffect(() => { runRef.current = () => { void search(radius); }; }, [search, radius]);
+  useEffect(() => { runRef.current = () => { keyboardOpened.current = false; void search(radius); }; }, [search, radius]);
   useEffect(() => () => { generation.current++; }, []);
   useEffect(() => {
     if (suspended) { generation.current++; busy.current = false; setState("idle"); }
@@ -105,7 +94,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     generation.current++; busy.current = false;
     if (loading) setState("idle");
     onOpenChange(false);
-    requestAnimationFrame(() => trigger.current?.focus());
+    requestAnimationFrame(() => { if (keyboardOpened.current) trigger.current?.focus(); else trigger.current?.blur(); });
   };
   const changeRadius = (next: number) => { setRadius(next); void search(next, false, true); };
   const trapFocus = (event: KeyboardEvent<HTMLElement>) => {
@@ -117,14 +106,14 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   };
 
   return <>
-    <button ref={trigger} type="button" className="nearby-trigger" hidden={suspended || open} aria-haspopup="dialog" aria-expanded={open} aria-controls="nearby-dialog" onClick={() => { void search(radius, true); }}>
+    <button ref={trigger} type="button" className="nearby-trigger" hidden={suspended || open} aria-haspopup="dialog" aria-expanded={open} aria-controls="nearby-dialog" onClick={event => { keyboardOpened.current = event.detail === 0; void search(radius, true); }}>
       <span className="nearby-trigger-icon"><TravelExploreOutlined aria-hidden="true"/></span>
       <span><strong>Встряхни, чтобы найти<br/>события рядом</strong><small>Можно просто нажать</small></span>
     </button>
     {open && createPortal(<div className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>
         <header className="nearby-heading"><span className="nearby-heading-icon"><TravelExploreOutlined aria-hidden="true"/></span><div><p>Ближе, чем кажется</p><h2 id="nearby-title">События рядом<span>.</span></h2></div><button ref={closeButton} type="button" className="nearby-close" aria-label="Закрыть события рядом" onClick={close}><CloseRounded/></button></header>
-        <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
+        <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
         <div className="nearby-content" aria-busy={loading}>
           {loading ? <div className="nearby-state" role="status"><span className="nearby-searching"><TravelExploreOutlined aria-hidden="true"/></span><h3>{state === "locating" ? "Ищем вашу точку на карте" : "Собираем планы поблизости"}</h3><p>{state === "locating" ? "Разрешите доступ к геопозиции, если браузер попросит." : `Смотрим события в радиусе ${radius} км.`}</p></div>
             : state === "error" ? <div className="nearby-state"><NearMeOutlined aria-hidden="true"/><h3>Пока не удалось найти вас</h3><p role="alert">{error}</p><button type="button" className="nearby-primary" onClick={() => { void search(radius, true); }}>Попробовать ещё раз</button></div>

@@ -23,6 +23,7 @@ import MapOutlined from "@mui/icons-material/MapOutlined";
 import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
 import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
 import NearbyEvents from "./components/NearbyEvents";
+import { getNearbyLocation } from "./api/nearbyPermissions";
 
 const Globe = lazy(() => import("./components/Globe"));
 
@@ -58,6 +59,33 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ru-RU", { day: "nu
 const mockApi = api;
 
 export default function App() {
+  useEffect(() => { void getNearbyLocation().catch(() => undefined); }, []);
+  useEffect(() => {
+    let touchInput = false;
+    const clearTouchFocus = () => {
+      const active = document.activeElement;
+      if (touchInput && active instanceof HTMLElement && active.matches("button, a, [role=button]")) active.blur();
+    };
+    const pointer = (event: PointerEvent) => { touchInput = event.pointerType === "touch" || event.pointerType === "pen"; clearTouchFocus(); };
+    const keyboard = () => { touchInput = false; };
+    const click = (event: MouseEvent) => {
+      if (!touchInput || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>("button, a, [role=button]");
+      requestAnimationFrame(() => { if (document.activeElement === control) control?.blur(); });
+    };
+    document.addEventListener("pointerdown", pointer, true);
+    document.addEventListener("keydown", keyboard, true);
+    document.addEventListener("click", click, true);
+    window.addEventListener("pageshow", clearTouchFocus);
+    window.addEventListener("popstate", clearTouchFocus);
+    return () => {
+      document.removeEventListener("pointerdown", pointer, true);
+      document.removeEventListener("keydown", keyboard, true);
+      document.removeEventListener("click", click, true);
+      window.removeEventListener("pageshow", clearTouchFocus);
+      window.removeEventListener("popstate", clearTouchFocus);
+    };
+  }, []);
   const [view, setView] = useState<View>(currentViewFromUrl);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
