@@ -1261,3 +1261,8 @@ h1, h2, h3, h4, h5, h6 {
   .nearby-overlay[data-closing="true"] > .nearby-panel { animation: popup-nearby-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
 }
 [data-closing="true"] > * { pointer-events: none; }
+
+@media (max-width: 600px) and (prefers-reduced-motion: no-preference) {
+  .favorites-drawer, .event-modal-panel { animation-name: popup-surface-enter; }
+  [data-closing="true"] > :is(.favorites-drawer, .event-modal-panel) { animation-name: popup-surface-exit; }
+}
