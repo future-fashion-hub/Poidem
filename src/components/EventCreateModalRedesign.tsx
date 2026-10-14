@@ -17,7 +17,10 @@ function MapView({ center }: { center: Coordinates | null }) {
   const map = useMap();
   useEffect(() => {
     map.invalidateSize();
-    if (center) map.flyTo([center.latitude, center.longitude], 11, { duration: 0.45 });
+    if (center) {
+      if (window.matchMedia("(pointer: coarse), (prefers-reduced-motion: reduce)").matches) map.setView([center.latitude, center.longitude], 11, { animate: false });
+      else map.flyTo([center.latitude, center.longitude], 11, { duration: 0.45 });
+    }
   }, [map, center?.latitude, center?.longitude]);
   return null;
 }
@@ -47,7 +50,11 @@ export default function EventCreateModalRedesign({ cities, categories, onClose: 
   const [saving, setSaving] = useState(false);
   const firstField = useRef<HTMLInputElement>(null);
 
-  useEffect(() => firstField.current?.focus(), []);
+  useEffect(() => {
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      firstField.current?.closest("form")?.querySelector<HTMLButtonElement>(".event-create-close")?.focus({ preventScroll: true });
+    } else firstField.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     if (!cover) { setCoverPreviewUrl(null); return; }
     const url = URL.createObjectURL(cover);

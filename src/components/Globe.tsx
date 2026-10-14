@@ -12,10 +12,15 @@ const countries = (feature(
   topology.objects.countries as Parameters<typeof feature>[1],
 ) as { features: object[] }).features;
 
-export default function Globe() {
+export default function Globe({ paused = false }: { paused?: boolean }) {
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 500, height: 500 });
+
+  useEffect(() => {
+    if (paused) globeRef.current?.pauseAnimation();
+    else globeRef.current?.resumeAnimation();
+  }, [paused]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -40,7 +45,8 @@ export default function Globe() {
     controls.enablePan = false;
     controls.enableRotate = true;
     globe.pointOfView(STARTING_VIEW, 0);
-  }, []);
+    if (paused) globe.pauseAnimation();
+  }, [paused]);
 
   return <div ref={containerRef} className="globe-stage relative mx-auto aspect-square w-full max-w-[540px] select-none" aria-label="Интерактивный глобус">
     <div className="globe-aura" aria-hidden="true"/>

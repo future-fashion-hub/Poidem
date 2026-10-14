@@ -1266,3 +1266,28 @@ h1, h2, h3, h4, h5, h6 {
   .favorites-drawer, .event-modal-panel { animation-name: popup-surface-enter; }
   [data-closing="true"] > :is(.favorites-drawer, .event-modal-panel) { animation-name: popup-surface-exit; }
 }
+
+@keyframes popup-mobile-enter { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes popup-mobile-exit { to { transform: translate3d(0, 100%, 0); } }
+@media (max-width: 767px) {
+  .auth-overlay, .event-create-overlay, .favorites-overlay, .event-modal-overlay,
+  .app-shell > .fixed:has(> form, > article) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .auth-overlay, .event-create-overlay, .app-shell > .fixed:has(> form, > article) {
+    display: flex; align-items: flex-end; justify-content: center; overflow: hidden; padding: 0;
+  }
+  .auth-card, .event-create-dialog, .app-shell > .fixed > form, .app-shell > .fixed > article {
+    width: 100%; max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0;
+    overflow-y: auto; overscroll-behavior: contain; border-radius: 24px 24px 0 0;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .auth-card, .event-create-dialog, .event-modal-panel, .favorites-drawer,
+  .app-shell > .fixed > form, .app-shell > .fixed > article { box-shadow: none; }
+  .auth-card input:not([type=checkbox]), .auth-card textarea,
+  .event-create-dialog input:not([type=file]), .event-create-dialog textarea,
+  .app-shell > .fixed input, .app-shell > .fixed textarea, .app-shell > .fixed select { font-size: 16px; }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: no-preference) {
+  .auth-card, .event-create-dialog, .favorites-drawer, .event-modal-panel,
+  .app-shell > .fixed > form, .app-shell > .fixed > article { animation-name: popup-mobile-enter; }
+  [data-closing="true"] > :is(.auth-card, .event-create-dialog, .favorites-drawer, .event-modal-panel, form, article) { animation-name: popup-mobile-exit; }
+}

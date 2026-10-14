@@ -1,5 +1,5 @@
 import { usePopupDismiss } from "./components/usePopupDismiss";
-import { FormEvent, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { backendApi, backendMode } from "./api/backendApi";
 import { collectPages } from "./api/pagination";
@@ -149,11 +149,19 @@ export default function App() {
     return () => { active = false; window.clearTimeout(timer); };
   }, [search, cityId, categoryId, sort]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!modalOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previousOverflow; };
+    const body = document.body;
+    const scrollTop = window.scrollY;
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    const previous = { overflow: body.style.overflow, position: body.style.position, top: body.style.top, left: body.style.left, width: body.style.width };
+    body.style.overflow = "hidden";
+    // iOS can still scroll the document behind a modal with overflow:hidden alone.
+    if (touch) Object.assign(body.style, { position: "fixed", top: `-${scrollTop}px`, left: "0", width: "100%" });
+    return () => {
+      Object.assign(body.style, previous);
+      if (touch) window.scrollTo({ top: scrollTop, behavior: "instant" });
+    };
   }, [modalOpen]);
 
   useEffect(() => {
@@ -217,7 +225,7 @@ export default function App() {
     <PageErrorBoundary key={`${view}:${user?.id ?? "guest"}`}>
     {!user && (view === "chats" || view === "profile") && <main className="mx-auto max-w-2xl px-5 py-16"><h1 className="text-2xl font-extrabold">{authLoading ? "Загружаем ваш аккаунт…" : "Войдите в аккаунт"}</h1>{!authLoading && <><p className="mt-3 text-[#52705a]">Этот раздел доступен после входа.</p><button onClick={() => setAuthOpen(true)} className="cta-lime mt-6 rounded-xl px-5 py-3 font-bold">Войти</button></>}</main>}
     {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
-    {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
+    {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} paused={modalOpen} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
     {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
     {!onboardingRequired && view === "profile" && user ? <UserDashboard user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} /> : null}
@@ -254,12 +262,12 @@ function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogo
   </header>;
 }
 
-function HomeHero({ onNavigate }: { onNavigate: (view: View) => void }) {
+function HomeHero({ onNavigate, paused }: { onNavigate: (view: View) => void; paused: boolean }) {
   return <main><section className="hero-section relative">
     <div className="hero-grain absolute inset-0"/><div className="hero-orb absolute -right-24 -top-36 h-[460px] w-[460px] rounded-full"/>
     <div className="relative mx-auto grid max-w-[1240px] items-center gap-8 px-5 py-6 sm:py-8 lg:grid-cols-[1.04fr_.96fr] lg:px-8 lg:py-12">
       <div className="hero-copy relative z-10 px-1 py-8 sm:px-5 lg:py-12"><p className="hero-kicker mb-7 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-[#bdf238]"/>Новая афиша вашего города</p><h1 className="max-w-2xl text-4xl font-black leading-[.98] tracking-[-.068em] text-white sm:text-5xl lg:text-[4.7rem]">Не просто <span className="hero-accent">куда.</span><br/>А с кем пойти.</h1><p className="mt-7 max-w-lg text-base leading-7 text-[#c2d2c4]">Собираем людей вокруг настоящих планов: от концерта во дворе до выставки, о которой хочется говорить всю ночь.</p><div className="mt-9 flex flex-wrap gap-3"><a href="#events" className="cta-lime rounded-xl px-5 py-3.5 text-sm font-extrabold">Найти событие</a><button onClick={() => onNavigate("map")} className="hero-ghost rounded-xl px-5 py-3.5 text-sm font-extrabold">Смотреть на карте</button></div><div className="hero-proof mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-[#b7c9b9]"><span>Реальные люди</span><span>Живые события</span><span>Свои компании</span></div></div>
-      <div className="hero-globe relative min-h-[355px] sm:min-h-[410px]"><Suspense fallback={<div className="globe-loading" role="status" aria-label="Загружаем глобус"/>}><Globe/></Suspense></div>
+      <div className="hero-globe relative min-h-[355px] sm:min-h-[410px]"><Suspense fallback={<div className="globe-loading" role="status" aria-label="Загружаем глобус"/>}><Globe paused={paused}/></Suspense></div>
     </div>
   </section></main>;
 }
@@ -323,14 +331,14 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    closeButton.current?.focus();
+    closeButton.current?.focus({ preventScroll: true });
     const closeOnEscape = (keyboardEvent: KeyboardEvent) => {
       if (keyboardEvent.key === "Escape") onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
-      previousFocus?.focus();
+      previousFocus?.focus({ preventScroll: true });
     };
   }, [onClose]);
 
@@ -439,7 +447,7 @@ function CreateCompanyModal({ event, onClose: onDismiss, onCreated }: { event: E
   const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [maxMembers, setMaxMembers] = useState(5); const [joinType, setJoinType] = useState<"open" | "request">("open"); const [minAge, setMinAge] = useState(""); const [maxAge, setMaxAge] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
   const submit = async (e: FormEvent) => { e.preventDefault(); const min = minAge ? Number(minAge) : null; const max = maxAge ? Number(maxAge) : null; if ((min !== null && (min < 14 || min > 100)) || (max !== null && (max < 14 || max > 100)) || (min !== null && max !== null && min > max)) { setError("Возраст указывается от 14 до 100 лет; нижняя граница не может быть выше верхней."); return; } setSaving(true); try { await api.createCompany(event.id, { name, description: description || null, maxMembers, joinType, minAge: min, maxAge: max }); onCreated(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось создать компанию"); } finally { setSaving(false); } };
-  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/55 p-5 backdrop-blur-sm"><form onSubmit={submit} className="relative w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button type="button" onClick={onClose} className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><p className="pr-8 text-xs font-bold uppercase tracking-wider text-[#78907d]">{event.title}</p><h2 className="mt-2 text-2xl font-black">Создать компанию</h2><div className="mt-6 space-y-4"><label className="block text-sm font-semibold">Название<input autoFocus value={name} onChange={(e) => setName(e.target.value)} required maxLength={150} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="block text-sm font-semibold">Описание<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Участников<input type="number" min={2} max={100} value={maxMembers} onChange={(e) => setMaxMembers(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Вступление<SiteSelect value={joinType} onChange={(value) => setJoinType(value as "open" | "request")} className="mt-2 font-normal" options={[{ value: "open", label: "Свободное" }, { value: "request", label: "По заявке" }]}/></label></div><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Возраст от<input type="number" min={14} max={100} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Возраст до<input type="number" min={14} max={100} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label></div></div>{error && <p role="alert" className="mt-4 text-sm text-[#a33a31]">{error}</p>}<button disabled={saving} className="mt-6 w-full rounded-2xl bg-[#bdf238] py-3.5 text-sm font-extrabold">{saving ? "Создаём…" : "Создать компанию"}</button></form></div>;
+  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/55 p-5 backdrop-blur-sm"><form onSubmit={submit} className="relative w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button type="button" onClick={onClose} className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><p className="pr-8 text-xs font-bold uppercase tracking-wider text-[#78907d]">{event.title}</p><h2 className="mt-2 text-2xl font-black">Создать компанию</h2><div className="mt-6 space-y-4"><label className="block text-sm font-semibold">Название<input autoFocus={!window.matchMedia("(pointer: coarse)").matches} value={name} onChange={(e) => setName(e.target.value)} required maxLength={150} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="block text-sm font-semibold">Описание<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Участников<input type="number" min={2} max={100} value={maxMembers} onChange={(e) => setMaxMembers(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Вступление<SiteSelect value={joinType} onChange={(value) => setJoinType(value as "open" | "request")} className="mt-2 font-normal" options={[{ value: "open", label: "Свободное" }, { value: "request", label: "По заявке" }]}/></label></div><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Возраст от<input type="number" min={14} max={100} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Возраст до<input type="number" min={14} max={100} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label></div></div>{error && <p role="alert" className="mt-4 text-sm text-[#a33a31]">{error}</p>}<button disabled={saving} className="mt-6 w-full rounded-2xl bg-[#bdf238] py-3.5 text-sm font-extrabold">{saving ? "Создаём…" : "Создать компанию"}</button></form></div>;
 }
 
 function Profile({ user, cities, onUpdate, onOpenEvent }: { user: User; cities: DictionaryItem[]; onUpdate: (user: User) => void; onOpenEvent: (event: Event) => void }) {

@@ -356,7 +356,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
       <footer className="swipe-help"><span>Влево — пропустить · вправо — сохранить</span><small>Сохранение в подборке не записывает вас на мероприятие.</small></footer>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     </div>
-    {favoritesOpen && createPortal(<FavoritesDrawer favorites={favorites} loading={favoritesLoading} error={favoritesError} importCount={serverFavorites && !importDone ? legacyIds.length : 0} importing={importing} onImport={importLegacy} categories={categories} cities={cities} onClose={() => { onFavoritesChange(false); requestAnimationFrame(() => favoritesTriggerRef.current?.focus()); }} onOpen={async (item) => { try { const fresh = serverFavorites ? await api.getEvent(item.id) : item; onFavoritesChange(false); onOpen(fresh); } catch (error) { setFavoritesError(error instanceof Error ? error.message : "Событие больше недоступно"); if (serverFavorites && error instanceof ApiError && error.status === 404) void collectPages(options => api.listFavorites(options), 20, true).then(result => setRemoteFavorites(result.items)).catch(() => undefined); } }} onRemove={removeSaved}/>, document.body)}
+    {favoritesOpen && createPortal(<FavoritesDrawer favorites={favorites} loading={favoritesLoading} error={favoritesError} importCount={serverFavorites && !importDone ? legacyIds.length : 0} importing={importing} onImport={importLegacy} categories={categories} cities={cities} onClose={() => { onFavoritesChange(false); requestAnimationFrame(() => favoritesTriggerRef.current?.focus({ preventScroll: true })); }} onOpen={async (item) => { try { const fresh = serverFavorites ? await api.getEvent(item.id) : item; onFavoritesChange(false); onOpen(fresh); } catch (error) { setFavoritesError(error instanceof Error ? error.message : "Событие больше недоступно"); if (serverFavorites && error instanceof ApiError && error.status === 404) void collectPages(options => api.listFavorites(options), 20, true).then(result => setRemoteFavorites(result.items)).catch(() => undefined); } }} onRemove={removeSaved}/>, document.body)}
   </main>;
 }
 
@@ -377,7 +377,7 @@ function FavoritesDrawer({ favorites, loading, error, importCount, importing, on
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => { closeRef.current?.focus(); }, []);
+  useEffect(() => { closeRef.current?.focus({ preventScroll: true }); }, []);
   const handleKeyDown = (keyboard: ReactKeyboardEvent<HTMLElement>) => {
     if (keyboard.key === "Escape") { keyboard.preventDefault(); onClose(); return; }
     if (keyboard.key !== "Tab") return;
