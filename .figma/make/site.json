@@ -1,5 +1,7 @@
 {
-  "description": "Connect with others to attend events together on this Russian-language platform, making it easy to find both activities and companions.",
+  "title": "Пойдём — события рядом и своя компания",
+  "language": "ru",
+  "description": "Находите события рядом, выбирайте интересные планы и собирайте свою компанию для встреч в реальном мире.",
   "robots": {
     "index": false
   },
