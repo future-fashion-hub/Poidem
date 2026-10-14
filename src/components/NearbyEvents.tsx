@@ -28,6 +28,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   const [results, setResults] = useState<NearbyEvent[]>([]);
   const [error, setError] = useState("");
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [shakeVersion, setShakeVersion] = useState(0);
   const position = useRef<Coordinates | null>(null);
   const busy = useRef(false);
   const generation = useRef(0);
@@ -69,7 +70,24 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     } finally { if (current === generation.current) busy.current = false; }
   }, [motionState, onOpenChange, suspended]);
 
-  useEffect(() => { runRef.current = () => { keyboardOpened.current = false; void search(radius); }; }, [search, radius]);
+  useEffect(() => {
+    runRef.current = () => {
+      if (busy.current || suspended || document.visibilityState !== "visible") return;
+      keyboardOpened.current = false;
+      setShakeVersion(version => version + 1);
+      // Unsupported or blocked haptics must never interrupt the search.
+      try { navigator.vibrate?.([35, 45, 35]); } catch { /* Best-effort feedback. */ }
+      void search(radius);
+    };
+  }, [search, radius, suspended]);
+  useEffect(() => {
+    if (!shakeVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = panel.current?.animate?.([
+      { translate: "0 0" }, { translate: "-5px 0" }, { translate: "5px 0" },
+      { translate: "-4px 0" }, { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
+    ], { duration: 420, delay: 220, easing: "ease-in-out" });
+    return () => animation?.cancel();
+  }, [shakeVersion]);
   useEffect(() => () => { generation.current++; }, []);
   useEffect(() => {
     if (suspended) { generation.current++; busy.current = false; setState("idle"); }

@@ -12,7 +12,7 @@
 .nearby-trigger small { display: block; margin-top: 4px; color: #3d5846; font-size: 11px; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nearby-trigger { --nearby-glass: #f7faf2; } }
 .nearby-overlay { position: fixed; inset: 0; z-index: 2150; display: flex; justify-content: flex-end; background: #08180e94; backdrop-filter: blur(4px); }
-.nearby-panel { display: flex; flex-direction: column; width: min(100%, 620px); height: 100dvh; background: var(--canvas); color: var(--ink); animation: nearby-enter 200ms var(--ease-out); }
+.nearby-panel { --nearby-enter-x: 24px; --nearby-enter-y: 0px; display: flex; flex-direction: column; width: min(100%, 620px); height: 100dvh; background: var(--canvas); color: var(--ink); animation: nearby-enter 300ms var(--ease-out); }
 .nearby-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; padding: max(28px, env(safe-area-inset-top)) 28px 24px; background: #fff; border-bottom: 1px solid var(--line); }
 .nearby-heading > div { flex: 1; min-width: 0; }
 .nearby-heading p { color: #57705b; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -56,7 +56,7 @@
 .nearby-footnote { flex: 0 0 auto; padding: 16px 28px max(20px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #fff; color: #46624d; font-size: 12px; line-height: 1.6; }
 .nearby-footnote small { display: block; margin-top: 5px; color: #738577; font-size: 11px; }
 .nearby-panel button:focus-visible { outline: 3px solid #7b9b35; outline-offset: 2px; }
-@keyframes nearby-enter { from { opacity: .5; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes nearby-enter { from { opacity: 0; transform: translate(var(--nearby-enter-x), var(--nearby-enter-y)); } to { opacity: 1; transform: translate(0, 0); } }
 @keyframes nearby-pulse { 50% { opacity: .55; } }
 @media (max-width: 1023px) { .nearby-trigger { right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--mobile-nav-height, 72px) + env(safe-area-inset-bottom) + 12px); } }
 @media (max-width: 600px) {
@@ -65,7 +65,7 @@
   .nearby-trigger strong { font-size: 12px; }
   .nearby-trigger small { font-size: 10px; }
   .nearby-overlay { align-items: flex-end; }
-  .nearby-panel { width: 100%; height: min(94dvh, 900px); border-radius: 24px 24px 0 0; overflow: hidden; }
+  .nearby-panel { --nearby-enter-x: 0px; --nearby-enter-y: 24px; width: 100%; height: min(94dvh, 900px); border-radius: 24px 24px 0 0; overflow: hidden; }
   .nearby-heading { gap: 10px; padding: 20px 16px; }
   .nearby-heading-icon { width: 40px; height: 40px; border-radius: 13px; }
   .nearby-heading h2 { font-size: 25px; }

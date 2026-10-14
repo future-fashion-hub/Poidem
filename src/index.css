@@ -1235,3 +1235,20 @@ h1, h2, h3, h4, h5, h6 {
   .event-modal-overlay, .event-modal-panel { animation: none; }
   .event-modal-close, .event-modal-actions button { transition: none; }
 }
+
+@keyframes popup-backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popup-surface-enter {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .auth-overlay, .event-create-overlay, .favorites-overlay, .event-modal-overlay,
+  .nearby-overlay, .app-shell > .fixed:has(> form, > article) {
+    animation: popup-backdrop-enter 220ms ease-out;
+  }
+  .auth-card, .event-create-dialog, .app-shell > .fixed > form,
+  .app-shell > .fixed > article {
+    animation: popup-surface-enter 300ms var(--ease-out);
+  }
+  .favorites-drawer, .event-modal-panel { animation-duration: 300ms; animation-timing-function: var(--ease-out); }
+}
