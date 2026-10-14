@@ -87,7 +87,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       { translate: "0 0" }, { translate: "-9px 0" }, { translate: "9px 0" },
       { translate: "-7px 0" }, { translate: "6px 0" }, { translate: "-4px 0" },
       { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
-    ], { duration: 680, delay: 460, easing: "ease-in-out" });
+    ], { duration: 680, easing: "ease-in-out" });
     return () => animation?.cancel();
   }, [shakeVersion]);
   useEffect(() => () => { generation.current++; }, []);
