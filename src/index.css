@@ -720,6 +720,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (hover: hover) and (pointer: fine) {
 .event-map-pin:hover { filter: brightness(1.05); transform: rotate(-45deg) scale(1.12); }
 }
+.event-map-pin--hollow { background: transparent; }
 .event-map-pin-image {
   display: grid;
   width: 32px;

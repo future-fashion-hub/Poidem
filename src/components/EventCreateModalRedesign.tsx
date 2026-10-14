@@ -28,7 +28,7 @@ function MapView({ center }: { center: Coordinates | null }) {
 
 function PointPicker({ point, title, imageUrl, onPick }: { point: Coordinates | null; title: string; imageUrl: string | null; onPick: (point: Coordinates) => void }) {
   useMapEvents({ click: ({ latlng }) => onPick({ latitude: latlng.lat, longitude: latlng.lng }) });
-  const icon = useMemo(() => eventMapMarkerIcon(title || "Место", imageUrl), [title, imageUrl]);
+  const icon = useMemo(() => eventMapMarkerIcon(title || "Место", imageUrl, true), [title, imageUrl]);
   return point ? <Marker position={[point.latitude, point.longitude]} icon={icon} /> : null;
 }
 

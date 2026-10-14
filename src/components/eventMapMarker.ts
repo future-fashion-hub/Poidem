@@ -1,13 +1,13 @@
 import { divIcon } from "leaflet";
 
-export function eventMapMarkerIcon(title: string, imageUrl?: string | null) {
+export function eventMapMarkerIcon(title: string, imageUrl?: string | null, hollow = false) {
   const pin = document.createElement("div");
-  pin.className = "event-map-pin";
+  pin.className = hollow ? "event-map-pin event-map-pin--hollow" : "event-map-pin";
   const cover = document.createElement("div");
   cover.className = "event-map-pin-image";
   const fallback = () => { cover.textContent = title.trim().slice(0, 1).toUpperCase() || "•"; };
 
-  if (imageUrl) {
+  if (imageUrl && !hollow) {
     const image = document.createElement("img");
     image.src = imageUrl;
     image.alt = title;
@@ -15,10 +15,10 @@ export function eventMapMarkerIcon(title: string, imageUrl?: string | null) {
     image.height = 32;
     image.addEventListener("error", fallback, { once: true });
     cover.append(image);
-  } else {
+  } else if (!hollow) {
     fallback();
   }
-  pin.append(cover);
+  if (!hollow) pin.append(cover);
 
   return divIcon({
     className: "event-map-marker-wrapper",
