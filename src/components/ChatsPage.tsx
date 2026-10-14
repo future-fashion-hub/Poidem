@@ -117,7 +117,7 @@ export default function ChatsPage({ userId }: { userId: number }) {
         <nav className="chat-company-list" aria-label="Чаты компаний">
           {loading ? <p className="chat-list-notice" role="status">Загружаем ваши чаты…</p> : visibleCompanies.length ? visibleCompanies.map(company => <button key={company.id} className="chat-company" aria-current={selected?.id === company.id ? "page" : undefined} onClick={() => { setSelected(company); setMobileConversation(true); }}>
             <span className="chat-company-avatar">{company.name.slice(0, 1).toUpperCase()}</span><span className="chat-company-copy"><strong>{company.name}</strong><small>{company.membersCount} участников</small></span><ForumOutlined className="chat-company-icon" fontSize="small"/>
-          </button>) : <div className="chat-list-notice"><ForumOutlined/><p>{search ? "По этому запросу чатов нет." : "Присоединитесь к компании, чтобы начать общение."}</p></div>}
+          </button>) : <div className="chat-list-notice"><span className="chat-empty-icon"><ForumOutlined aria-hidden="true"/></span><p>{search ? "По этому запросу чатов нет." : "Присоединитесь к компании, чтобы начать общение."}</p></div>}
         </nav>
         <p className="chat-sidebar-foot">Здесь только компании, в которые вы вступили.</p>
       </aside>
