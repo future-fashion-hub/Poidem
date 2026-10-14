@@ -12,6 +12,7 @@
 .nearby-trigger small { display: block; margin-top: 4px; color: #3d5846; font-size: 11px; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nearby-trigger { --nearby-glass: #f7faf2; } }
 .nearby-overlay { position: fixed; inset: 0; z-index: 2150; display: flex; justify-content: flex-end; background: #08180e94; backdrop-filter: blur(4px); }
+.nearby-shake-layer { width: min(100%, 620px); height: 100%; }
 .nearby-panel { --nearby-enter-x: 100%; --nearby-enter-y: 0px; display: flex; flex-direction: column; width: min(100%, 620px); height: 100dvh; background: var(--canvas); color: var(--ink); animation: nearby-enter 300ms var(--ease-out); }
 .nearby-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; padding: max(28px, env(safe-area-inset-top)) 28px 24px; background: #fff; border-bottom: 1px solid var(--line); }
 .nearby-heading > div { flex: 1; min-width: 0; }
@@ -65,6 +66,7 @@
   .nearby-trigger strong { font-size: 12px; }
   .nearby-trigger small { font-size: 10px; }
   .nearby-overlay { align-items: flex-end; }
+  .nearby-shake-layer { width: 100%; height: min(94dvh, 900px); }
   .nearby-panel { --nearby-enter-x: 0px; --nearby-enter-y: 100%; width: 100%; height: min(94dvh, 900px); border-radius: 24px 24px 0 0; overflow: hidden; }
   .nearby-heading { gap: 10px; padding: 20px 16px; }
   .nearby-heading-icon { width: 40px; height: 40px; border-radius: 13px; }
@@ -80,6 +82,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .nearby-panel, .nearby-searching { animation: none; } .nearby-trigger:active { transform: none; } }
 @media (max-height: 540px) {
+  .nearby-shake-layer { height: 100dvh; }
   .nearby-panel { height: 100dvh; border-radius: 0; }
   .nearby-heading { padding: 10px 16px; }
   .nearby-heading-icon { width: 36px; height: 36px; border-radius: 12px; }

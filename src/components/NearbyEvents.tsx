@@ -30,6 +30,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   const [error, setError] = useState("");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [shakeVersion, setShakeVersion] = useState(0);
+  const animatedShake = useRef(0);
   const position = useRef<Coordinates | null>(null);
   const busy = useRef(false);
   const generation = useRef(0);
@@ -82,18 +83,24 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     };
   }, [search, radius, suspended]);
   useEffect(() => {
-    if (!shakeVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const animation = panel.current?.animate?.([
-      { translate: "0 0" }, { translate: "-9px 0" }, { translate: "9px 0" },
-      { translate: "-7px 0" }, { translate: "6px 0" }, { translate: "-4px 0" },
-      { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
+    if (!open || !panel.current || !shakeVersion || animatedShake.current === shakeVersion) return;
+    animatedShake.current = shakeVersion;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Animate a separate layer so Safari does not combine shaking with the slide transform.
+    const animation = panel.current.parentElement?.animate?.([
+      { transform: "translate3d(0,0,0)" }, { transform: "translate3d(-9px,0,0)" }, { transform: "translate3d(9px,0,0)" },
+      { transform: "translate3d(-7px,0,0)" }, { transform: "translate3d(6px,0,0)" }, { transform: "translate3d(-4px,0,0)" },
+      { transform: "translate3d(3px,0,0)" }, { transform: "translate3d(-1px,0,0)" }, { transform: "translate3d(0,0,0)" },
     ], { duration: 680, easing: "ease-in-out" });
     return () => animation?.cancel();
-  }, [shakeVersion]);
+  }, [shakeVersion, open]);
   useEffect(() => () => { generation.current++; }, []);
   useEffect(() => {
-    if (suspended) { generation.current++; busy.current = false; setState("idle"); }
-  }, [suspended]);
+    if (suspended) {
+      generation.current++; busy.current = false; setState("idle");
+      if (open) onOpenChange(false);
+    }
+  }, [suspended, open, onOpenChange]);
   useEffect(() => {
     if (suspended || (motionState !== "available" && motionState !== "enabled")) return;
     let detect = createShakeDetector();
@@ -132,7 +139,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       <span><strong>Встряхни, чтобы найти<br/>события рядом</strong><small>Можно просто нажать</small></span>
     </button>
     {open && createPortal(<div data-closing={closing || undefined} className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
-      <section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>
+      <div className="nearby-shake-layer"><section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>
         <header className="nearby-heading"><span className="nearby-heading-icon"><TravelExploreOutlined aria-hidden="true"/></span><div><p>Ближе, чем кажется</p><h2 id="nearby-title">События рядом<span>.</span></h2></div><button ref={closeButton} type="button" className="nearby-close" aria-label="Закрыть события рядом" onClick={close}><CloseRounded/></button></header>
         <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
         <div className="nearby-content" aria-busy={loading}>
@@ -146,7 +153,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
             </> : null}
         </div>
         <footer className="nearby-footnote"><span>{motionState === "enabled" || motionState === "available" ? "Встряхните телефон ещё раз, чтобы обновить подборку." : motionState === "denied" ? "Доступ к движению закрыт. Поиск по нажатию работает." : motionState === "permission" ? "Нажмите обновление, чтобы включить поиск встряхиванием." : "На этом устройстве используйте поиск по нажатию."}</span><small>Местоположение используется только для поиска рядом.</small></footer>
-      </section>
+      </section></div>
     </div>, document.body)}
   </>;
 }

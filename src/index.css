@@ -1254,11 +1254,11 @@ h1, h2, h3, h4, h5, h6 {
     animation: popup-surface-enter 460ms cubic-bezier(.22, 1, .36, 1);
   }
   .favorites-drawer, .event-modal-panel { animation: popup-side-enter 460ms cubic-bezier(.22, 1, .36, 1); }
-  .nearby-overlay > .nearby-panel { animation-duration: 460ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+  .nearby-overlay .nearby-panel { animation-duration: 460ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
   [data-closing="true"], .app-shell > .fixed[data-closing="true"] { animation: none; }
   [data-closing="true"] > :is(.auth-card, .event-create-dialog, form, article) { animation: popup-surface-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
   [data-closing="true"] > :is(.favorites-drawer, .event-modal-panel) { animation: popup-side-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
-  .nearby-overlay[data-closing="true"] > .nearby-panel { animation: popup-nearby-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
+  .nearby-overlay[data-closing="true"] .nearby-panel { animation: popup-nearby-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
 }
 [data-closing="true"] > * { pointer-events: none; }
 
