@@ -1,4 +1,5 @@
 export type DictionaryItem = { id: number; name: string; slug: string | null };
+export type EventFilters = { search?: string; cityId?: number; categoryId?: number; sort?: string; west?: number; south?: number; east?: number; north?: number };
 
 export type UserShort = {
   id: number;

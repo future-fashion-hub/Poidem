@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
@@ -14,8 +14,6 @@ export async function getChatAccessToken() {
   return accessToken;
 }
 export async function refreshChatAccessToken() { return refresh(); }
-
-type EventFilters = { search?: string; cityId?: number; categoryId?: number; sort?: string };
 
 function query(params: Record<string, string | number | undefined>) {
   const value = new URLSearchParams();

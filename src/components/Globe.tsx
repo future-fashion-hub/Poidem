@@ -21,7 +21,7 @@ export default function Globe() {
     const element = containerRef.current;
     if (!element) return;
     const updateSize = () => {
-      const width = Math.max(280, Math.min(element.clientWidth, 540));
+      const width = Math.max(1, Math.min(element.clientWidth, 540));
       setDimensions({ width, height: width });
     };
     updateSize();
@@ -34,7 +34,7 @@ export default function Globe() {
     const globe = globeRef.current;
     if (!globe) return;
     const controls = globe.controls();
-    controls.autoRotate = true;
+    controls.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     controls.autoRotateSpeed = 0.45;
     controls.enableZoom = false;
     controls.enablePan = false;

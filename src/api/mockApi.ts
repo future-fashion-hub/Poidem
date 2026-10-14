@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
+import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 
 const cities: DictionaryItem[] = [
@@ -116,11 +116,16 @@ export const mockApi = {
   async logout() { await wait(); state.user = null; persist(); },
   async getCurrentUser() { await wait(); return requireUser(); },
   async getUserProfile(id: number) { await wait(); const item = state.users.find((user) => user.id === id); if (!item) throw new ApiError("USER_NOT_FOUND", "Пользователь не найден", 404); return item; },
-  async listEvents(filters: { search?: string; cityId?: number; categoryId?: number; sort?: string } = {}, _options: PageOptions = {}) {
+  async listEvents(filters: EventFilters = {}, _options: PageOptions = {}) {
     await wait(); let result = state.events.filter((item) => item.status === "active");
     if (filters.search) { const query = filters.search.toLocaleLowerCase("ru"); result = result.filter((item) => `${item.title} ${item.description ?? ""} ${item.locationName}`.toLocaleLowerCase("ru").includes(query)); }
     if (filters.cityId) result = result.filter((item) => item.cityId === filters.cityId);
     if (filters.categoryId) result = result.filter((item) => item.categoryId === filters.categoryId);
+    const { west, south, east, north } = filters;
+    if (west !== undefined && south !== undefined && east !== undefined && north !== undefined) result = result.filter(item => {
+      const point = item.location;
+      return point && point.latitude >= south && point.latitude <= north && (west <= east ? point.longitude >= west && point.longitude <= east : point.longitude >= west || point.longitude <= east);
+    });
     result.sort(filters.sort === "popular" ? (a, b) => b.participantsCount - a.participantsCount : (a, b) => a.startsAt.localeCompare(b.startsAt)); return page(result);
   },
   async listFavorites(options: PageOptions = {}): Promise<Paginated<Favorite>> {
