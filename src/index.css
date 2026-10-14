@@ -1236,20 +1236,18 @@ h1, h2, h3, h4, h5, h6 {
   .event-modal-close, .event-modal-actions button { transition: none; }
 }
 
-@keyframes popup-backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes popup-surface-enter {
-  from { opacity: 0; transform: translateY(16px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { transform: translateY(calc(50dvh + 50%)); }
+  to { transform: translateY(0); }
 }
-@keyframes popup-backdrop-exit { to { opacity: 0; } }
-@keyframes popup-surface-exit { to { opacity: 0; transform: translateY(16px) scale(.985); } }
-@keyframes popup-side-enter { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes popup-side-exit { to { opacity: 0; transform: translateX(24px); } }
-@keyframes popup-nearby-exit { to { opacity: 0; transform: translate(var(--nearby-enter-x), var(--nearby-enter-y)); } }
+@keyframes popup-surface-exit { to { transform: translateY(calc(50dvh + 50%)); } }
+@keyframes popup-side-enter { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes popup-side-exit { to { transform: translateX(100%); } }
+@keyframes popup-nearby-exit { to { transform: translate(var(--nearby-enter-x), var(--nearby-enter-y)); } }
 @media (prefers-reduced-motion: no-preference) {
   .auth-overlay, .event-create-overlay, .favorites-overlay, .event-modal-overlay,
   .nearby-overlay, .app-shell > .fixed:has(> form, > article) {
-    animation: popup-backdrop-enter 380ms cubic-bezier(.22, 1, .36, 1);
+    animation: none;
   }
   .auth-card, .event-create-dialog, .app-shell > .fixed > form,
   .app-shell > .fixed > article {
@@ -1257,7 +1255,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   .favorites-drawer, .event-modal-panel { animation: popup-side-enter 460ms cubic-bezier(.22, 1, .36, 1); }
   .nearby-overlay > .nearby-panel { animation-duration: 460ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
-  [data-closing="true"], .app-shell > .fixed[data-closing="true"] { animation: popup-backdrop-exit 340ms ease-in both; }
+  [data-closing="true"], .app-shell > .fixed[data-closing="true"] { animation: none; }
   [data-closing="true"] > :is(.auth-card, .event-create-dialog, form, article) { animation: popup-surface-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
   [data-closing="true"] > :is(.favorites-drawer, .event-modal-panel) { animation: popup-side-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
   .nearby-overlay[data-closing="true"] > .nearby-panel { animation: popup-nearby-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }

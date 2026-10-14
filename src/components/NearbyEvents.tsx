@@ -77,7 +77,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       keyboardOpened.current = false;
       setShakeVersion(version => version + 1);
       // Unsupported or blocked haptics must never interrupt the search.
-      try { navigator.vibrate?.([35, 45, 35]); } catch { /* Best-effort feedback. */ }
+      try { navigator.vibrate?.([70, 60, 70]); } catch { /* Best-effort feedback. */ }
       void search(radius);
     };
   }, [search, radius, suspended]);
@@ -86,7 +86,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     const animation = panel.current?.animate?.([
       { translate: "0 0" }, { translate: "-5px 0" }, { translate: "5px 0" },
       { translate: "-4px 0" }, { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
-    ], { duration: 420, delay: 220, easing: "ease-in-out" });
+    ], { duration: 420, delay: 460, easing: "ease-in-out" });
     return () => animation?.cancel();
   }, [shakeVersion]);
   useEffect(() => () => { generation.current++; }, []);
