@@ -1,11 +1,13 @@
-.nearby-trigger { position: fixed; z-index: 35; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); min-height: 78px; padding: 14px 20px 14px 14px; border: 1px solid #36523c; border-radius: 22px; background: var(--ink); color: white; text-align: left; cursor: pointer; box-shadow: 0 12px 36px #10231824; }
+.nearby-trigger { position: fixed; z-index: 35; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); min-height: 78px; padding: 14px 20px 14px 14px; border: 1px solid rgba(255, 255, 255, .7); border-radius: 22px; background: rgba(247, 250, 242, .76); color: var(--ink); -webkit-backdrop-filter: blur(18px) saturate(120%); backdrop-filter: blur(18px) saturate(120%); text-align: left; cursor: pointer; box-shadow: 0 8px 28px #10231814, inset 0 1px 0 #ffffff80; }
 .nearby-trigger[hidden] { display: none; }
-.nearby-trigger:hover { background: #1e3d29; }
+.nearby-trigger:hover { background: rgba(247, 250, 242, .88); }
 .nearby-trigger:active { transform: scale(.98); }
 .nearby-trigger-icon, .nearby-heading-icon { display: grid; flex: 0 0 auto; width: 48px; height: 48px; place-items: center; border-radius: 16px; background: var(--lime); color: var(--ink); }
 .nearby-trigger-icon svg { width: 30px; height: 30px; }
+.nearby-trigger .nearby-trigger-icon { background: rgba(189, 242, 56, .85); }
 .nearby-trigger strong { display: block; font-size: 13px; font-weight: 800; line-height: 1.4; }
-.nearby-trigger small { display: block; margin-top: 4px; color: #c1d4b9; font-size: 11px; }
+.nearby-trigger small { display: block; margin-top: 4px; color: #3d5846; font-size: 11px; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nearby-trigger { background: #f7faf2; border-color: var(--line); } }
 .nearby-overlay { position: fixed; inset: 0; z-index: 2150; display: flex; justify-content: flex-end; background: #08180e94; backdrop-filter: blur(4px); }
 .nearby-panel { display: flex; flex-direction: column; width: min(100%, 620px); height: 100dvh; background: var(--canvas); color: var(--ink); animation: nearby-enter 200ms var(--ease-out); }
 .nearby-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; padding: max(28px, env(safe-area-inset-top)) 28px 24px; background: #fff; border-bottom: 1px solid var(--line); }
