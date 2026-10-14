@@ -84,9 +84,10 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   useEffect(() => {
     if (!shakeVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const animation = panel.current?.animate?.([
-      { translate: "0 0" }, { translate: "-5px 0" }, { translate: "5px 0" },
-      { translate: "-4px 0" }, { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
-    ], { duration: 420, delay: 460, easing: "ease-in-out" });
+      { translate: "0 0" }, { translate: "-9px 0" }, { translate: "9px 0" },
+      { translate: "-7px 0" }, { translate: "6px 0" }, { translate: "-4px 0" },
+      { translate: "3px 0" }, { translate: "-1px 0" }, { translate: "0 0" },
+    ], { duration: 680, delay: 460, easing: "ease-in-out" });
     return () => animation?.cancel();
   }, [shakeVersion]);
   useEffect(() => () => { generation.current++; }, []);
