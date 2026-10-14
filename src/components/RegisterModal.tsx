@@ -1,9 +1,11 @@
+import { usePopupDismiss } from "./usePopupDismiss";
 import { useState } from "react";
 import BrandLogo from "./BrandLogo";
 import SocialAuthButtons, { type SocialProvider } from "./SocialAuthButtons";
 import PasswordVisibilityButton from "./PasswordVisibilityButton";
 
-export default function RegisterModal({ onClose, onLogin, onRegister, onPasswordRegister }: { onClose: () => void; onLogin: () => void; onRegister: (provider: SocialProvider) => Promise<void>; onPasswordRegister: (username: string, password: string) => Promise<void> }) {
+export default function RegisterModal({ onClose: onDismiss, onLogin, onRegister, onPasswordRegister }: { onClose: () => void; onLogin: () => void; onRegister: (provider: SocialProvider) => Promise<void>; onPasswordRegister: (username: string, password: string) => Promise<void> }) {
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const [accepted, setAccepted] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +26,7 @@ export default function RegisterModal({ onClose, onLogin, onRegister, onPassword
     setLoading(true); try { await onPasswordRegister(username.trim(), password); } catch (caught) { showError(caught); setLoading(false); }
   };
 
-  return <div className="auth-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+  return <div data-closing={closing || undefined} className="auth-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <section className="auth-card auth-card--register" role="dialog" aria-modal="true" aria-labelledby="register-title">
       <button type="button" onClick={onClose} aria-label="Закрыть регистрацию" className="auth-close">×</button>
       <BrandLogo/>

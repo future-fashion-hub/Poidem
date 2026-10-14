@@ -1,3 +1,4 @@
+import { usePopupDismiss } from "./usePopupDismiss";
 import { useEffect, useMemo, useRef, useState } from "react";
 import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
 import { createPortal } from "react-dom";
@@ -359,7 +360,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
   </main>;
 }
 
-function FavoritesDrawer({ favorites, loading, error, importCount, importing, onImport, categories, cities, onClose, onOpen, onRemove }: {
+function FavoritesDrawer({ favorites, loading, error, importCount, importing, onImport, categories, cities, onClose: onDismiss, onOpen, onRemove }: {
   favorites: { id: number; event: Event | null; unavailableReason: string | null }[];
   loading: boolean;
   error: string;
@@ -372,6 +373,7 @@ function FavoritesDrawer({ favorites, loading, error, importCount, importing, on
   onOpen: (event: Event) => void;
   onRemove: (id: number) => void;
 }) {
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -385,7 +387,7 @@ function FavoritesDrawer({ favorites, loading, error, importCount, importing, on
     else if (!keyboard.shiftKey && document.activeElement === buttons.at(-1)) { keyboard.preventDefault(); buttons[0].focus(); }
   };
 
-  return <div className="favorites-overlay" onMouseDown={(mouse) => { if (mouse.target === mouse.currentTarget) onClose(); }}>
+  return <div data-closing={closing || undefined} className="favorites-overlay" onMouseDown={(mouse) => { if (mouse.target === mouse.currentTarget) onClose(); }}>
     <section ref={panelRef} className="favorites-drawer" role="dialog" aria-modal="true" aria-labelledby="favorites-title" onKeyDown={handleKeyDown}>
       <header className="favorites-header">
         <div className="favorites-heading-icon" aria-hidden="true"><FavoriteRounded/></div>

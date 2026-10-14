@@ -1,3 +1,4 @@
+import { usePopupDismiss } from "./usePopupDismiss";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -27,7 +28,8 @@ function PointPicker({ point, title, imageUrl, onPick }: { point: Coordinates | 
   return point ? <Marker position={[point.latitude, point.longitude]} icon={icon} /> : null;
 }
 
-export default function EventCreateModalRedesign({ cities, categories, onClose, onCreated }: Props) {
+export default function EventCreateModalRedesign({ cities, categories, onClose: onDismiss, onCreated }: Props) {
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState(0);
   const [cityId, setCityId] = useState(0);
@@ -105,7 +107,7 @@ export default function EventCreateModalRedesign({ cities, categories, onClose, 
     } finally { setSaving(false); }
   };
 
-  return <div className="event-create-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+  return <div data-closing={closing || undefined} className="event-create-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <form className="event-create-dialog" role="dialog" aria-modal="true" aria-labelledby="event-create-heading" onSubmit={submit} noValidate>
       <header className="event-create-head">
         <div><p className="event-create-eyebrow">Новое событие</p><h2 id="event-create-heading">Соберёмся вместе<span>.</span></h2><p>Расскажите о плане — после проверки он появится в афише.</p></div>

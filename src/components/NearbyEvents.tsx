@@ -1,3 +1,4 @@
+import { usePopupDismiss } from "./usePopupDismiss";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import TravelExploreOutlined from "@mui/icons-material/TravelExploreOutlined";
@@ -108,12 +109,13 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   }, [motionState, suspended]);
   useEffect(() => { if (open) closeButton.current?.focus(); }, [open]);
 
-  const close = () => {
+  const finishClose = () => {
     generation.current++; busy.current = false;
     if (loading) setState("idle");
     onOpenChange(false);
     requestAnimationFrame(() => { if (keyboardOpened.current) trigger.current?.focus(); else trigger.current?.blur(); });
   };
+  const { closing, dismiss: close } = usePopupDismiss(finishClose, open);
   const changeRadius = (next: number) => { setRadius(next); void search(next, false, true); };
   const trapFocus = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") { event.preventDefault(); close(); }
@@ -128,7 +130,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       <span className="nearby-trigger-icon"><TravelExploreOutlined aria-hidden="true"/></span>
       <span><strong>Встряхни, чтобы найти<br/>события рядом</strong><small>Можно просто нажать</small></span>
     </button>
-    {open && createPortal(<div className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    {open && createPortal(<div data-closing={closing || undefined} className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>
         <header className="nearby-heading"><span className="nearby-heading-icon"><TravelExploreOutlined aria-hidden="true"/></span><div><p>Ближе, чем кажется</p><h2 id="nearby-title">События рядом<span>.</span></h2></div><button ref={closeButton} type="button" className="nearby-close" aria-label="Закрыть события рядом" onClick={close}><CloseRounded/></button></header>
         <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>

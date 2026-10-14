@@ -1241,14 +1241,25 @@ h1, h2, h3, h4, h5, h6 {
   from { opacity: 0; transform: translateY(16px) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes popup-backdrop-exit { to { opacity: 0; } }
+@keyframes popup-surface-exit { to { opacity: 0; transform: translateY(16px) scale(.985); } }
+@keyframes popup-side-enter { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes popup-side-exit { to { opacity: 0; transform: translateX(24px); } }
+@keyframes popup-nearby-exit { to { opacity: 0; transform: translate(var(--nearby-enter-x), var(--nearby-enter-y)); } }
 @media (prefers-reduced-motion: no-preference) {
   .auth-overlay, .event-create-overlay, .favorites-overlay, .event-modal-overlay,
   .nearby-overlay, .app-shell > .fixed:has(> form, > article) {
-    animation: popup-backdrop-enter 220ms ease-out;
+    animation: popup-backdrop-enter 380ms cubic-bezier(.22, 1, .36, 1);
   }
   .auth-card, .event-create-dialog, .app-shell > .fixed > form,
   .app-shell > .fixed > article {
-    animation: popup-surface-enter 300ms var(--ease-out);
+    animation: popup-surface-enter 460ms cubic-bezier(.22, 1, .36, 1);
   }
-  .favorites-drawer, .event-modal-panel { animation-duration: 300ms; animation-timing-function: var(--ease-out); }
+  .favorites-drawer, .event-modal-panel { animation: popup-side-enter 460ms cubic-bezier(.22, 1, .36, 1); }
+  .nearby-overlay > .nearby-panel { animation-duration: 460ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+  [data-closing="true"], .app-shell > .fixed[data-closing="true"] { animation: popup-backdrop-exit 340ms ease-in both; }
+  [data-closing="true"] > :is(.auth-card, .event-create-dialog, form, article) { animation: popup-surface-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
+  [data-closing="true"] > :is(.favorites-drawer, .event-modal-panel) { animation: popup-side-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
+  .nearby-overlay[data-closing="true"] > .nearby-panel { animation: popup-nearby-exit 320ms cubic-bezier(.4, 0, 1, 1) both; }
 }
+[data-closing="true"] > * { pointer-events: none; }
