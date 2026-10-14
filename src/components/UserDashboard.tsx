@@ -9,6 +9,8 @@ import { useEffect, useState } from "react"
 import { api } from "../api"
 import { backendApi, backendMode } from "../api/backendApi"
 import { collectPages } from "../api/pagination"
+import { companyEventAvailable, loadCompanyEvents, type CompanyEventIndex } from "../api/companyAvailability"
+import { useEventClock } from "./useEventClock"
 import type {
   Application,
   Company,
@@ -64,7 +66,10 @@ export default function UserDashboard({
 }: Props) {
   const [tab, setTab] = useState<Tab>("profile")
   const [events, setEvents] = useState<Event[]>([])
-  const [companies, setCompanies] = useState<Company[]>([])
+  const [allCompanies, setCompanies] = useState<Company[]>([])
+  const [companyEvents, setCompanyEvents] = useState<CompanyEventIndex>({})
+  const now = useEventClock(companyEvents)
+  const companies = allCompanies.filter(company => companyEventAvailable(company, companyEvents, now))
   const [applications, setApplications] = useState<Application[]>([])
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState("")
@@ -78,6 +83,8 @@ export default function UserDashboard({
         collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()),
         collectPages(options => backendMode ? backendApi.listMyApplications(options) : api.listMyApplications()),
       ])
+      const index = await loadCompanyEvents(b.items, a.items, id => api.getEvent(id))
+      setCompanyEvents(index)
       setEvents(a.items)
       setCompanies(b.items)
       setApplications(c.items)

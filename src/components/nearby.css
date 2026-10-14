@@ -1,7 +1,10 @@
 .nearby-trigger { --nearby-glass: rgba(247, 250, 242, .76); position: fixed; z-index: 35; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); min-height: 78px; padding: 14px 20px 14px 14px; border: 0; border-radius: 24px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
 .nearby-trigger::before { position: absolute; z-index: -1; inset: 0; content: ""; border: 1px solid rgba(255, 255, 255, .7); border-radius: inherit; background: var(--nearby-glass); -webkit-backdrop-filter: blur(18px) saturate(120%); backdrop-filter: blur(18px) saturate(120%); box-shadow: 0 8px 28px #10231814; pointer-events: none; }
 .nearby-trigger[hidden] { display: none; }
+.nearby-trigger .nearby-label-desktop { display: none; }
 @media (hover: hover) and (pointer: fine) {
+.nearby-trigger .nearby-label-touch { display: none; }
+.nearby-trigger .nearby-label-desktop { display: block; }
 .nearby-trigger:hover { --nearby-glass: rgba(247, 250, 242, .88); }
 }
 .nearby-trigger:active { transform: scale(.98); }

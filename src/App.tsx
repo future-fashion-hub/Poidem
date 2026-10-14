@@ -200,7 +200,7 @@ export default function App() {
     try { const result = await api.registerWithPassword(username, password); setUser(result.user); setRegisterOpen(false); setView("profile"); } catch (error) { handleError(error); throw error; }
   };
   const authenticateAdmin = async (username: string, password: string) => {
-    const result = await api.loginWithPassword(username, password);
+    const result = await api.loginWithPassword(username.trim(), password);
     if (result.user.role === "admin") {
       sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ id: result.user.id, fullName: `${result.user.firstName} ${result.user.lastName ?? ""}`.trim(), role: "admin" }));
       window.location.assign("/admin#/");

@@ -136,7 +136,8 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
   return <>
     <button ref={trigger} type="button" className="nearby-trigger" hidden={suspended || open} aria-haspopup="dialog" aria-expanded={open} aria-controls="nearby-dialog" onClick={event => { keyboardOpened.current = event.detail === 0; void search(radius, true); }}>
       <span className="nearby-trigger-icon"><TravelExploreOutlined aria-hidden="true"/></span>
-      <span><strong>Встряхни, чтобы найти<br/>события рядом</strong><small>Можно просто нажать</small></span>
+      <span className="nearby-label-touch"><strong>Встряхни, чтобы найти<br/>события рядом</strong><small>Можно просто нажать</small></span>
+      <span className="nearby-label-desktop"><strong>Найти события рядом</strong><small>По вашей геопозиции</small></span>
     </button>
     {open && createPortal(<div data-closing={closing || undefined} className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="nearby-shake-layer"><section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>

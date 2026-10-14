@@ -8,6 +8,8 @@ import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
 import { api, backendMode } from "../api";
 import { backendApi } from "../api/backendApi";
 import { collectPages } from "../api/pagination";
+import { companyEventAvailable, loadCompanyEvents, type CompanyEventIndex } from "../api/companyAvailability";
+import { useEventClock } from "./useEventClock";
 import { connectCompanyChat, type ChatConnection, type ChatState } from "../api/companyChatSocket";
 import type { Company, CompanyMessage } from "../api/types";
 
@@ -20,8 +22,12 @@ const messageTime = (date: string) => new Date(date).toLocaleTimeString("ru-RU",
 const dayLabel = (date: string) => new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 
 export default function ChatsPage({ userId }: { userId: number }) {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selected, setSelected] = useState<Company | null>(null);
+  const [allCompanies, setCompanies] = useState<Company[]>([]);
+  const [companyEvents, setCompanyEvents] = useState<CompanyEventIndex>({});
+  const now = useEventClock(companyEvents);
+  const companies = allCompanies.filter(company => company.status === "active" && companyEventAvailable(company, companyEvents, now));
+  const [selectedCompany, setSelected] = useState<Company | null>(null);
+  const selected = companies.find(company => company.id === selectedCompany?.id) ?? companies[0] ?? null;
   const [messages, setMessages] = useState<CompanyMessage[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [search, setSearch] = useState("");
@@ -37,18 +43,20 @@ export default function ChatsPage({ userId }: { userId: number }) {
   const followLatest = useRef(true);
   const visibleCompanies = companies.filter(company => company.name.toLocaleLowerCase("ru").includes(search.toLocaleLowerCase("ru").trim()));
   const text = selected ? drafts[selected.id] ?? "" : "";
-  const canSend = !!selected && !sending && (!backendMode || connection === "connected");
+  const canSend = !!selected && conversationId.current === selected.id && !sending && (!backendMode || connection === "connected");
 
   useEffect(() => {
     let alive = true;
-    collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()).then(result => {
+    collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()).then(async result => {
+      const events = await loadCompanyEvents(result.items, [], id => api.getEvent(id));
       if (!alive) return;
       const available = result.items.filter(item => item.status === "active");
-      setCompanies(available); setSelected(available[0] ?? null);
+      setCompanyEvents(events); setCompanies(available); setSelected(available[0] ?? null);
     }).catch(caught => { if (alive) setError(caught instanceof Error ? caught.message : "Не удалось загрузить чаты"); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
+  useEffect(() => { if (!selected) setMobileConversation(false); }, [selected?.id]);
   useEffect(() => {
     if (scrollArea.current && followLatest.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight;
   }, [messages, historyLoading, mobileConversation]);

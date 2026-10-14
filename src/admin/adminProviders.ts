@@ -3,7 +3,7 @@ import { api, backendMode } from "../api";
 import { backendApi } from "../api/backendApi";
 import { collectPages } from "../api/pagination";
 import type { Company, Event, Report, User } from "../api/types";
-import { ADMIN_SESSION_KEY, createAdminSession, readAdminSession } from "./adminSession";
+import { ADMIN_SESSION_KEY, createAdminSession, restoreAdminSession } from "./adminSession";
 
 export const adminAuthProvider: AuthProvider = {
   async login({ username, password }) {
@@ -13,10 +13,7 @@ export const adminAuthProvider: AuthProvider = {
     sessionStorage.removeItem(ADMIN_SESSION_KEY);
   },
   async checkAuth() {
-    if (readAdminSession()) return;
-    // In backend mode an OAuth callback returns here with a refresh cookie but
-    // without a browser-side session record. Restore the admin identity once.
-    await createAdminSession("", "");
+    await restoreAdminSession();
   },
   async checkError(error) {
     if (error?.status === 401 || error?.status === 403) {
@@ -25,15 +22,19 @@ export const adminAuthProvider: AuthProvider = {
     }
   },
   async getIdentity() {
-    const session = readAdminSession();
-    if (!session) throw new Error("Требуется вход администратора");
+    const session = await restoreAdminSession();
     return { id: session.id, fullName: session.fullName };
   },
   async getPermissions() {
-    return readAdminSession()?.role ?? null;
+    return (await restoreAdminSession()).role;
   },
   async canAccess() {
-    return readAdminSession()?.role === "admin";
+    try { return (await restoreAdminSession()).role === "admin"; }
+    catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (status === 401 || status === 403) return false;
+      throw error;
+    }
   },
 };
 

@@ -50,6 +50,13 @@ export default function EventCreateModalRedesign({ cities, categories, onClose: 
   const [submitError, setSubmitError] = useState("");
   const [saving, setSaving] = useState(false);
   const firstField = useRef<HTMLInputElement>(null);
+  const dialog = useRef<HTMLFormElement>(null);
+  const coverScroll = useRef<number | null>(null);
+  const rememberCoverScroll = () => { coverScroll.current = dialog.current?.scrollTop ?? null; };
+  const restoreCoverScroll = () => {
+    const top = coverScroll.current;
+    if (top !== null) requestAnimationFrame(() => { if (dialog.current) dialog.current.scrollTop = top; });
+  };
 
   useEffect(() => {
     if (window.matchMedia("(pointer: coarse)").matches) {
@@ -116,7 +123,7 @@ export default function EventCreateModalRedesign({ cities, categories, onClose: 
   };
 
   return <div data-closing={closing || undefined} className="event-create-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-    <form className="event-create-dialog" role="dialog" aria-modal="true" aria-labelledby="event-create-heading" onSubmit={submit} noValidate>
+    <form ref={dialog} className="event-create-dialog" role="dialog" aria-modal="true" aria-labelledby="event-create-heading" onSubmit={submit} noValidate>
       <header className="event-create-head">
         <div><p className="event-create-eyebrow">Новое событие</p><h2 id="event-create-heading">Соберёмся вместе<span>.</span></h2><p>Расскажите о плане — после проверки он появится в афише.</p></div>
         <button type="button" className="event-create-close" onClick={onClose} aria-label="Закрыть форму">×</button>
@@ -151,7 +158,7 @@ export default function EventCreateModalRedesign({ cities, categories, onClose: 
         <section className="event-create-section" aria-labelledby="event-create-details-heading">
           <div className="event-create-section-heading"><span>03</span><div><h3 id="event-create-details-heading">Детали</h3><p>Несколько слов и обложка помогут людям узнать ваше событие.</p></div></div>
           <div className="event-create-field"><label htmlFor="event-create-description">Описание</label><textarea id="event-create-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={4} placeholder="Что ждёт гостей?"/></div>
-          <div className="event-create-field"><label htmlFor="event-create-cover">Обложка <em>*</em></label><div className="event-create-upload"><input id="event-create-cover" className="event-create-file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setCover(event.target.files?.[0] ?? null)}/><label htmlFor="event-create-cover" className="event-create-upload-button"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="12" cy="12.5" r="3"/><path d="M8 5l1-2h6l1 2"/></svg>Выбрать фото</label><span className="event-create-upload-name">{cover?.name ?? "Фото не выбрано"}</span></div><p className="event-create-help">JPG, PNG или WebP, до 10 МБ</p>{errors.cover && <small role="alert">{errors.cover}</small>}</div>
+          <div className="event-create-field"><label htmlFor="event-create-cover">Обложка <em>*</em></label><div className="event-create-upload"><label htmlFor="event-create-cover" className="event-create-upload-button" onPointerDownCapture={rememberCoverScroll} onKeyDownCapture={rememberCoverScroll}><input id="event-create-cover" className="event-create-file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { setCover(event.target.files?.[0] ?? null); event.currentTarget.blur(); restoreCoverScroll(); }}/><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="12" cy="12.5" r="3"/><path d="M8 5l1-2h6l1 2"/></svg>Выбрать фото</label><span className="event-create-upload-name">{cover?.name ?? "Фото не выбрано"}</span></div><p className="event-create-help">JPG, PNG или WebP, до 10 МБ</p>{errors.cover && <small role="alert">{errors.cover}</small>}</div>
         </section>
       </div>
       <footer className="event-create-footer"><p>Событие появится после модерации.</p><div><button type="button" className="event-create-cancel" onClick={onClose}>Отмена</button><button type="submit" className="event-create-submit" disabled={saving}>{saving ? "Отправляем…" : "Отправить на модерацию"}</button></div></footer>

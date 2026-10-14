@@ -488,7 +488,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .event-create-field small, .event-create-error { display: block; margin-top: 7px; color: #a73529; font-size: 12px; font-weight: 700; }
 .event-create-upload { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 10px 12px; border: 1px solid #cce997; border-radius: 12px; background: #f4fbdf; }
 .event-create-upload:focus-within { border-color: #87b546; box-shadow: 0 0 0 3px rgba(189,242,56,.24); }
-.event-create-field .event-create-file-input { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.event-create-field .event-create-file-input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; opacity: 0; cursor: pointer; }
+.event-create-upload-button { position: relative; }
+.event-create-dialog { overflow-anchor: none; }
 .event-create-field .event-create-upload-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--lime); color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1; cursor: pointer; }
 .event-create-upload-button svg { display: block; flex: 0 0 auto; }
 @media (hover: hover) and (pointer: fine) {
@@ -945,7 +947,8 @@ h1, h2, h3, h4, h5, h6 {
 @media (hover: hover) and (pointer: fine) {
 .profile-photo-button:hover { background: #afe72d; }
 }
-.profile-photo-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.profile-photo-button { position: relative; }
+.profile-photo-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .profile-photo-remove { color: #8f3d32; background: #fff2ee; }
 @media (hover: hover) and (pointer: fine) {
 .profile-photo-remove:hover { background: #fbe5df; }
@@ -957,7 +960,8 @@ h1, h2, h3, h4, h5, h6 {
 .profile-photo-compact-button { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: center; gap: 7px; color: #31513a; cursor: pointer; }
 .profile-photo-compact-button svg { flex: 0 0 auto; color: #6a8a4b; }
 .profile-photo-compact-button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 800; }
-.profile-photo-compact-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+.profile-photo-compact-button { position: relative; }
+.profile-photo-compact-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 @media (max-width: 640px) {
   .site-date-popover { right: auto; left: 0; }
   .profile-photo-picker { grid-template-columns: 64px minmax(0, 1fr); }
