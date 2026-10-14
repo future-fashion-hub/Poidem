@@ -96,7 +96,7 @@ button, a { touch-action: manipulation; }
   .atlas-heading h1, .plans-heading h1, .chats-heading h1 { font-size: clamp(30px, 8vw, 40px); }
   .atlas-page { --atlas-map-height: clamp(320px, 52svh, 480px); }
   .atlas-page .atlas-filters { padding: 16px; border-radius: 20px; }
-  .atlas-cards { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .atlas-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .atlas-card-cover { height: auto; aspect-ratio: 1.5; }
   .atlas-card-body { padding: 12px; }
   .atlas-card h3 { font-size: 15px; }
@@ -174,6 +174,10 @@ button, a { touch-action: manipulation; }
   .favorites-import { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
   .favorites-import p { font-size: 12px; }
   .favorites-footer { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 480px) {
+  .atlas-cards { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 399px) {
