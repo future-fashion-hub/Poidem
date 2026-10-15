@@ -1279,6 +1279,28 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @keyframes popup-mobile-enter { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
+/* Touch equivalent of each card's desktop hover, driven by visibility. */
+@media (hover: none) and (pointer: coarse) and (prefers-reduced-motion: no-preference) {
+  /* The old fill-mode:both entrance would override the card's hover transform. */
+  #events .event-card { animation: none; }
+  .event-card.is-scroll-hover { border-color: #adcba5; box-shadow: 0 24px 50px rgba(25,58,33,.16); transform: translateY(-8px); }
+  .event-card.is-scroll-hover .event-card-image img { scale: 1.07; }
+  .event-card.is-scroll-hover .event-card-date { transform: translateY(-6px) scale(1.06); }
+  .event-card.is-scroll-hover .event-card-arrow { background: var(--lime); color: var(--ink); transform: translateX(4px); }
+
+  .atlas-card { transition: border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+  .atlas-card.is-scroll-hover { border-color: #a7c885; box-shadow: 0 5px 16px rgba(16,35,24,.06); }
+  .atlas-card.is-scroll-hover .atlas-card-cover img { transform: scale(1.045); }
+  .atlas-card.is-scroll-hover time, .plans-event.is-scroll-hover time { color: #84b514; }
+
+  .plans-event.is-scroll-hover { border-color: #adcba5; transform: translateY(-4px); box-shadow: 0 14px 32px rgba(33,51,35,.1); }
+  .plans-event.is-scroll-hover .plans-event-image img { transform: scale(1.04); }
+  .plans-event.is-scroll-hover .plans-event-link { background: var(--lime); color: var(--ink); }
+
+  .favorites-card.is-scroll-hover { border-color: #aecba3; box-shadow: 0 13px 28px rgba(16,35,24,.09); transform: translateY(-2px); }
+  .nearby-card { transition: border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+  .nearby-card.is-scroll-hover { border-color: #99c344; box-shadow: 0 6px 20px #5a791814; }
+}
 @keyframes popup-mobile-exit { to { transform: translate3d(0, 100%, 0); } }
 @media (max-width: 767px) {
   .auth-overlay, .event-create-overlay, .favorites-overlay, .event-modal-overlay,

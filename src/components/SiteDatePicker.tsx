@@ -47,16 +47,11 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
 
   useEffect(() => {
     if (!open) return;
-    const closeOutside = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", closeOutside);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("mousedown", closeOutside);
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
@@ -72,7 +67,6 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
   const chooseDay = (date?: Date) => {
     if (!date) return;
     onChange(`${dayValue(date)}${includeTime ? `T${time}` : ""}`);
-    if (!includeTime) setOpen(false);
   };
   const chooseTime = (nextTime: string) => {
     setDraftTime(nextTime);
@@ -87,7 +81,7 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
     : placeholder;
 
   return <div ref={root} className={`site-date ${open ? "is-open" : ""} ${className}`}>
-    <button id={id} type="button" className="site-date-trigger" aria-label={ariaLabel} aria-expanded={open} aria-controls={`${id}-calendar`} onClick={() => setOpen((current) => !current)}>
+    <button id={id} type="button" className="site-date-trigger" aria-label={ariaLabel} aria-expanded={open} aria-controls={`${id}-calendar`} onClick={() => setOpen(true)}>
       <span className={!selected ? "is-placeholder" : ""}>{label}</span>
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
     </button>
@@ -116,7 +110,7 @@ export default function SiteDatePicker({ value, onChange, includeTime = false, m
         <SiteSelect value={time.slice(3, 5)} options={minutes} onChange={(minute) => chooseTime(`${time.slice(0, 2)}:${minute}`)} ariaLabel="Минуты"/>
       </div></div> : null}
       <div className="site-date-actions">
-        {value ? <button type="button" onClick={() => { onChange(""); setOpen(false); }}>Очистить</button> : <span/>}
+        {value ? <button type="button" onClick={() => onChange("")}>Очистить</button> : <span/>}
         <button type="button" className="site-date-done" onClick={() => setOpen(false)}>Готово</button>
       </div>
     </div> : null}

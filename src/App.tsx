@@ -1,4 +1,5 @@
 import { usePopupDismiss } from "./components/usePopupDismiss";
+import { observeScrollCards } from "./components/scrollCardHover";
 import { FormEvent, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { backendApi, backendMode } from "./api/backendApi";
@@ -60,6 +61,7 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ru-RU", { day: "nu
 const mockApi = api;
 
 export default function App() {
+  useEffect(observeScrollCards, []);
   useEffect(() => { void getNearbyLocation().catch(() => undefined); }, []);
   useEffect(() => {
     let touchInput = false;
@@ -109,8 +111,9 @@ export default function App() {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [nearbyOpen, setNearbyOpen] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const onboardingRequired = Boolean(user && !user.isProfileComplete);
   const secondaryModalOpen = authOpen || registerOpen || companyOpen || eventCreateOpen;
-  const modalOpen = Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen);
+  const modalOpen = !onboardingRequired && Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen);
 
   const flash = (next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 3200); };
   const handleError = (error: unknown) => {
@@ -190,14 +193,28 @@ export default function App() {
     setSelected(event); setCompanies([]);
     try { setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(event.id, options) : api.listEventCompanies(event.id))).items); } catch (error) { handleError(error); }
   };
+  const completeAuthentication = (nextUser: User) => {
+    setUser(nextUser);
+    setAuthOpen(false);
+    setRegisterOpen(false);
+    if (!nextUser.isProfileComplete) {
+      // Registration continues on a page, not underneath the guest's event popup.
+      setSelected(null);
+      setCompanyOpen(false);
+      setEventCreateOpen(false);
+      setFavoritesOpen(false);
+      setNearbyOpen(false);
+      setView("profile");
+    }
+  };
   const authenticate = async (provider: "google" | "telegram" | "vk") => {
-    try { const result = await api.login(provider); setUser(result.user); setAuthOpen(false); flash({ kind: "success", text: "Вы вошли в демо-аккаунт" }); } catch (error) { handleError(error); }
+    try { const result = await api.login(provider); completeAuthentication(result.user); flash({ kind: "success", text: "Вы вошли в демо-аккаунт" }); } catch (error) { handleError(error); }
   };
   const register = async (provider: "google" | "telegram" | "vk") => {
-    try { const result = await api.register(provider); setUser(result.user); setRegisterOpen(false); setView("profile"); } catch (error) { handleError(error); throw error; }
+    try { const result = await api.register(provider); completeAuthentication(result.user); setView("profile"); } catch (error) { handleError(error); throw error; }
   };
   const registerWithPassword = async (username: string, password: string) => {
-    try { const result = await api.registerWithPassword(username, password); setUser(result.user); setRegisterOpen(false); setView("profile"); } catch (error) { handleError(error); throw error; }
+    try { const result = await api.registerWithPassword(username, password); completeAuthentication(result.user); setView("profile"); } catch (error) { handleError(error); throw error; }
   };
   const authenticateAdmin = async (username: string, password: string) => {
     const result = await api.loginWithPassword(username.trim(), password);
@@ -206,7 +223,7 @@ export default function App() {
       window.location.assign("/admin#/");
       return;
     }
-    setUser(result.user); setAuthOpen(false); setView(result.user.isProfileComplete ? "home" : "profile");
+    completeAuthentication(result.user); setView(result.user.isProfileComplete ? "home" : "profile");
   };
   const requireAuth = (action: () => void) => user ? action() : setAuthOpen(true);
   const refreshCompanies = async () => selected && setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(selected.id, options) : api.listEventCompanies(selected.id))).items);
@@ -217,7 +234,6 @@ export default function App() {
       await refreshCompanies();
     } catch (error) { handleError(error); }
   });
-  const onboardingRequired = Boolean(user && !user.isProfileComplete);
 
   return <div className="app-shell min-h-screen bg-[#f5f7f2] text-[#102318]">
     <div className="app-background" inert={modalOpen ? true : undefined} aria-hidden={modalOpen || undefined}>
