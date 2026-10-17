@@ -766,8 +766,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .catalog-active-filters button { min-height: 44px; max-width: 100%; padding: 8px 12px; border-radius: 999px; background: #eff7e3; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
 .catalog-active-filters .catalog-reset { background: transparent; text-decoration: underline; }
 .atlas-mobile-filter-toggle { display: none; }
+.atlas-filter-controls { display: block; }
 .atlas-filter-controls > .site-select { margin-bottom: 20px; }
-@media (min-width: 1024px) { .atlas-filter-controls[hidden] { display: block; } }
 .event-solo-action { display: flex; flex-direction: column; gap: 8px; }
 .event-solo-action > p { font-size: 13px; color: #426627; font-weight: 700; }
 .event-solo-action button { width: 100%; }

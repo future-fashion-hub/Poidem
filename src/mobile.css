@@ -1,29 +1,31 @@
 /* Mobile layout shares the desktop tokens and accounts for phone safe areas. */
-/* Size discovery by the space left between the site header and bottom nav. */
-.discovery-feed { padding-block: 12px; }
-.discovery-feed .discovery-content { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto; row-gap: 10px; height: calc(100dvh - 104px); min-height: 480px; }
-.discovery-feed .discovery-heading { margin-bottom: 0; }
-.discovery-feed .discovery-categories { flex-wrap: nowrap; overflow-x: auto; padding-block: 4px; margin: 0; }
-.discovery-feed .discovery-categories button { flex: 0 0 auto; white-space: nowrap; }
-.discovery-feed .discovery-progress { margin: 0; }
-.discovery-feed .swipe-deck { height: 100%; min-height: 0; margin-block: 0; }
-.discovery-feed .swipe-arrival, .discovery-feed .swipe-card { height: 100%; }
-.discovery-feed .swipe-card { display: flex; flex-direction: column; }
-.discovery-feed .swipe-artwork { flex: 1 1 auto; min-height: 140px; aspect-ratio: auto; }
-.discovery-feed .swipe-artwork > img, .discovery-feed .swipe-placeholder { position: absolute; inset: 0; }
-.discovery-feed .swipe-details { flex: 0 0 auto; padding: 12px 18px; }
-.discovery-feed .swipe-social { margin-top: 8px; padding-top: 8px; }
-.discovery-feed .swipe-actions, .discovery-feed .swipe-help { margin-top: 0; }
+/* Fit discovery to the available viewport only on phones and tablets. */
+@media (max-width: 1023px) {
+  .discovery-feed { padding-block: 12px; }
+  .discovery-feed .discovery-content { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto; row-gap: 10px; height: calc(100dvh - 164px - env(safe-area-inset-bottom)); min-height: 480px; }
+  .discovery-feed .discovery-heading { margin-bottom: 0; }
+  .discovery-feed .discovery-categories { flex-wrap: nowrap; overflow-x: auto; padding-block: 4px; margin: 0; }
+  .discovery-feed .discovery-categories button { flex: 0 0 auto; white-space: nowrap; }
+  .discovery-feed .discovery-progress { margin: 0; }
+  .discovery-feed .swipe-deck { height: 100%; min-height: 0; margin-block: 0; }
+  .discovery-feed .swipe-arrival, .discovery-feed .swipe-card { height: 100%; }
+  .discovery-feed .swipe-card { display: flex; flex-direction: column; }
+  .discovery-feed .swipe-artwork { flex: 1 1 auto; min-height: 140px; aspect-ratio: auto; }
+  .discovery-feed .swipe-artwork > img, .discovery-feed .swipe-placeholder { position: absolute; inset: 0; }
+  .discovery-feed .swipe-details { flex: 0 0 auto; padding: 12px 18px; }
+  .discovery-feed .swipe-social { margin-top: 8px; padding-top: 8px; }
+  .discovery-feed .swipe-actions, .discovery-feed .swipe-help { margin-top: 0; }
+}
 .plans-event-open { display: flex; flex: 1; flex-direction: column; width: 100%; min-width: 0; text-align: left; cursor: pointer; }
 .plans-event-open:focus-visible { outline: 3px solid #709d29; outline-offset: -3px; }
 .plans-event-participation { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 0 18px 14px; font-size: 12px; color: #426627; }
 .plans-event-participation button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); cursor: pointer; }
 @media (max-width: 1023px) {
-  .discovery-feed .discovery-content { height: calc(100dvh - 164px - env(safe-area-inset-bottom)); }
   .atlas-mobile-filter-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; font-size: 14px; font-weight: 800; }
   .atlas-mobile-filter-toggle > span { margin-left: auto; color: var(--ink-soft); font-size: 12px; }
   .atlas-mobile-filter-toggle > b { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 8px; background: var(--lime); }
-  .atlas-filter-controls:not([hidden]) { padding-top: 16px; }
+  .atlas-filter-controls[data-expanded="false"] { display: none; }
+  .atlas-filter-controls[data-expanded="true"] { padding-top: 16px; }
 }
 @media (max-width: 767px) {
   .discovery-feed { padding-block: 8px; }

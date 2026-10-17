@@ -411,7 +411,7 @@ function MapPage({ search, setSearch, events, cities, categories, cityId, catego
     <div className="atlas-layout">
       <aside className="atlas-filters">
         <button type="button" className="atlas-mobile-filter-toggle" aria-expanded={filtersOpen} aria-controls="atlas-filter-controls" onClick={() => setFiltersOpen(open => !open)}><Icon name="sliders" size={18}/>Фильтры{activeFilters > 0 && <b>{activeFilters}</b>}<span>{filtersOpen ? "Свернуть" : "Показать"}</span></button>
-        <div id="atlas-filter-controls" className="atlas-filter-controls" hidden={!filtersOpen}>
+        <div id="atlas-filter-controls" className="atlas-filter-controls" data-expanded={filtersOpen}>
         <div className="atlas-filter-heading"><Icon name="sliders" size={18}/><h2>Ваш маршрут</h2></div>
         <label className="atlas-label" htmlFor="atlas-search">Что ищем?</label>
         <div className="atlas-search"><Icon name="search" size={18}/><input id="atlas-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Событие или площадка"/></div>
