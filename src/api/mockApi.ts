@@ -1,10 +1,11 @@
 import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
-import { createMockMapEvents } from "./mockMapEvents";
+import { createMockMapEvents, extraMapCities, relocateMockMapEvent } from "./mockMapEvents";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
   { id: 3, name: "Казань", slug: "kazan" }, { id: 4, name: "Екатеринбург", slug: "ekaterinburg" },
+  ...extraMapCities,
 ];
 const categories: DictionaryItem[] = [
   { id: 1, name: "Технологии", slug: "technology" }, { id: 2, name: "Музыка", slug: "music" },
@@ -74,7 +75,7 @@ const initialReports: Report[] = [
   { id: 2, targetType: "company", targetId: 4, reason: "Спам", description: "Организатор отправляет одинаковые сообщения участникам.", author: people[2], status: "pending", resolvedBy: null, createdAt: "2026-09-23T10:05:00+03:00", resolvedAt: null },
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
-const mapEventsSeedVersion = 1;
+const mapEventsSeedVersion = 2;
 const fresh = (): State & { mapEventsSeedVersion: number } => ({ mapEventsSeedVersion, user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
@@ -82,6 +83,7 @@ function load(): State {
     if (!saved) return fresh();
     const parsed = JSON.parse(saved) as Partial<State> & { mapEventsSeedVersion?: number };
     const events = (parsed.events ?? initialEvents).map(event => {
+      if ((parsed.mapEventsSeedVersion ?? 0) < 2) event = relocateMockMapEvent(event);
       // Older demo snapshots predate location. Restore only known, unchanged
       // demo venues; keep explicit nulls and user-created events untouched.
       if (Object.prototype.hasOwnProperty.call(event, "location")) return event;
@@ -90,7 +92,7 @@ function load(): State {
         && seed.address === event.address);
       return original ? { ...event, location: original.location } : event;
     });
-    if ((parsed.mapEventsSeedVersion ?? 0) < mapEventsSeedVersion) {
+    if ((parsed.mapEventsSeedVersion ?? 0) < 1) {
       const existingIds = new Set(events.map(event => event.id));
       events.push(...additionalMapEvents.filter(event => !existingIds.has(event.id)));
     }

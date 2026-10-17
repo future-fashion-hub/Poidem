@@ -39,7 +39,11 @@ test("fresh demo contains 20 extra mapped events with covers and valid dictionar
     assert.ok(Date.parse(event.endsAt) > Date.parse(event.startsAt));
     assert.ok(Date.parse(event.startsAt) > Date.parse("2026-10-17"));
   }
-  for (const cityId of [1, 2, 3, 4]) assert.equal(added.filter(event => event.cityId === cityId).length, 5);
+  assert.equal(new Set(added.map(event => event.cityId)).size, 20);
+  for (const cityId of Array.from({ length: 20 }, (_, index) => index + 1)) assert.equal(added.filter(event => event.cityId === cityId).length, 1);
+  assert.ok(added.some(event => event.location.longitude > 130), "the demo includes the Far East");
+  assert.ok(added.some(event => event.location.latitude < 44), "the demo includes southern Russia");
+  assert.ok(added.some(event => event.location.longitude < 25), "the demo includes Kaliningrad");
 });
 
 test("existing snapshots gain the new events without losing edited events, users or favorites", async () => {
@@ -78,5 +82,28 @@ test("a full localStorage does not discard the existing user snapshot", async ()
 test("new mapped events are included in city and geographic searches", async () => {
   const { api } = demo();
   const { items } = await api.listEvents({ cityId: 4, west: 60.5, east: 60.7, south: 56.7, north: 57 });
-  assert.equal(items.filter(event => event.id >= 2001 && event.id <= 2020).length, 5);
+  assert.equal(items.filter(event => event.id >= 2001 && event.id <= 2020).length, 1);
+});
+
+test("version-one snapshots relocate the old Moscow seeds but preserve user edits and deleted events", async () => {
+  const events = (await demo().api.listEvents()).items;
+  const oldMoscowEvent = {
+    ...events.find(event => event.id === 2004), cityId: 1, title: "Мой заголовок", participantsCount: 99,
+    locationName: "Парк Сокольники", location: { latitude: 55.7948, longitude: 37.6765, source: "manual" },
+    startsAt: "2026-11-04T18:00:00+03:00", endsAt: "2026-11-04T21:00:00+03:00",
+  };
+  const editedVenue = { ...events.find(event => event.id === 2002), locationName: "Моё место", cityId: 1 };
+  const favoritesByUser = { 777: [{ eventId: 2004, savedAt: "2026-10-17" }] };
+  const storage = demo(JSON.stringify({ mapEventsSeedVersion: 1, events: [oldMoscowEvent, editedVenue], favoritesByUser }));
+  const migrated = JSON.parse(storage.snapshot());
+  assert.equal(migrated.mapEventsSeedVersion, 2);
+  assert.equal(migrated.events.length, 2, "deleted demo events must not come back");
+  const moved = migrated.events.find(event => event.id === 2004);
+  assert.equal(moved.cityId, 6);
+  assert.equal(moved.location.longitude, 82.9364);
+  assert.equal(moved.title, "Мой заголовок");
+  assert.equal(moved.participantsCount, 99);
+  assert.match(moved.startsAt, /\+07:00$/);
+  assert.deepEqual(migrated.events.find(event => event.id === 2002), editedVenue);
+  assert.deepEqual(migrated.favoritesByUser, favoritesByUser);
 });

@@ -1,4 +1,48 @@
-import type { Event, UserShort } from "./types";
+import type { DictionaryItem, Event, UserShort } from "./types";
+
+export const extraMapCities: DictionaryItem[] = [
+  { id: 5, name: "Нижний Новгород", slug: "nizhny-novgorod" },
+  { id: 6, name: "Новосибирск", slug: "novosibirsk" },
+  { id: 7, name: "Самара", slug: "samara" },
+  { id: 8, name: "Пермь", slug: "perm" },
+  { id: 9, name: "Уфа", slug: "ufa" },
+  { id: 10, name: "Ростов-на-Дону", slug: "rostov-on-don" },
+  { id: 11, name: "Краснодар", slug: "krasnodar" },
+  { id: 12, name: "Сочи", slug: "sochi" },
+  { id: 13, name: "Калининград", slug: "kaliningrad" },
+  { id: 14, name: "Воронеж", slug: "voronezh" },
+  { id: 15, name: "Ярославль", slug: "yaroslavl" },
+  { id: 16, name: "Тула", slug: "tula" },
+  { id: 17, name: "Владивосток", slug: "vladivostok" },
+  { id: 18, name: "Иркутск", slug: "irkutsk" },
+  { id: 19, name: "Красноярск", slug: "krasnoyarsk" },
+  { id: 20, name: "Томск", slug: "tomsk" },
+];
+
+type Placement = [cityId: number, venue: string, latitude: number, longitude: number];
+const placements: Placement[] = [
+  [1, "Кофейня у Чистых прудов", 55.7632, 37.6385],
+  [5, "Игровая гостиная у Большой Покровской", 56.3207, 44.0031],
+  [13, "Прогулочный маршрут у Рыбной деревни", 54.7006, 20.5148],
+  [6, "Беговой маршрут на Михайловской набережной", 55.0081, 82.9364],
+  [20, "Лекторий в Университетской роще", 56.4697, 84.9476],
+  [2, "Новая Голландия", 59.9296, 30.2895],
+  [15, "Книжная гостиная на улице Кирова", 57.6261, 39.8875],
+  [7, "Кофейня у Самарской набережной", 53.2018, 50.1024],
+  [17, "Прогулочный маршрут у бухты Золотой Рог", 43.1114, 131.8913],
+  [8, "Театральная студия у Комсомольского проспекта", 58.0087, 56.2411],
+  [3, "Набережная озера Кабан", 55.7782, 49.1227],
+  [11, "Гастрогостиная на Красной улице", 45.0355, 38.9753],
+  [10, "Музыкальная гостиная у Донской набережной", 47.2153, 39.7189],
+  [12, "Танцевальная студия у Приморского парка", 43.5751, 39.7231],
+  [14, "Общественная гостиная у Адмиралтейской площади", 51.6551, 39.2141],
+  [4, "Кофейня у Плотинки", 56.8385, 60.6035],
+  [16, "Киногостиная у Тульского кремля", 54.1961, 37.6182],
+  [18, "Творческая студия у Ангарской набережной", 52.2767, 104.2806],
+  [9, "Прогулочный маршрут в саду Салавата Юлаева", 54.7126, 55.9353],
+  [19, "Коворкинг у набережной Енисея", 56.0097, 92.8714],
+];
+const offsets: Record<number, string> = { 4: "+05:00", 6: "+07:00", 8: "+05:00", 9: "+05:00", 17: "+10:00", 18: "+08:00", 19: "+07:00", 20: "+07:00", 13: "+02:00", 7: "+04:00" };
 
 const photos = {
   tech: "1540575467063-178a50c2df87", music: "1501386761578-eac5c94b800a",
@@ -7,7 +51,8 @@ const photos = {
 };
 type Seed = [title: string, description: string, categoryId: number, cityId: number, venue: string, lat: number, lng: number, photo: keyof typeof photos];
 
-// Fictional demo events; coordinates are approximate venue locations.
+// Fictional demo events. Keep the original v1 venues to recognize unedited
+// saved seeds during migration; current coordinates come from placements above.
 const seeds: Seed[] = [
   ["Кофе и новые знакомства", "Знакомимся за чашкой кофе и делимся планами на выходные.", 5, 1, "Кофейня у Чистых прудов", 55.7632, 37.6385, "food"],
   ["Настолки без сложных правил", "Учимся играть вместе: объясним правила и найдём команду каждому.", 10, 1, "Игровое пространство на Арбате", 55.7494, 37.5914, "food"],
@@ -32,9 +77,11 @@ const seeds: Seed[] = [
 ];
 
 export function createMockMapEvents(creator: UserShort): Event[] {
-  return seeds.map(([title, description, categoryId, cityId, locationName, latitude, longitude, photo], index) => {
+  return seeds.map(([originalTitle, description, categoryId, , , , , photo], index) => {
+    const [cityId, locationName, latitude, longitude] = placements[index];
+    const title = index === 2 ? "Фотопрогулка по старому городу" : index === 3 ? "Лёгкий бег по набережной" : index === 8 ? "Прогулка у моря" : originalTitle;
     const day = String(index + 1).padStart(2, "0");
-    const offset = cityId === 4 ? "+05:00" : "+03:00";
+    const offset = offsets[cityId] ?? "+03:00";
     return {
       id: 2001 + index, title, description, categoryId, cityId, locationName,
       startsAt: `2026-11-${day}T18:00:00${offset}`, endsAt: `2026-11-${day}T21:00:00${offset}`,
@@ -44,4 +91,22 @@ export function createMockMapEvents(creator: UserShort): Event[] {
       creator, createdAt: "2026-10-17T12:00:00+03:00", updatedAt: "2026-10-17T12:00:00+03:00",
     };
   });
+}
+
+export function relocateMockMapEvent(event: Event): Event {
+  const index = event.id - 2001;
+  const original = seeds[index];
+  // Move only unmodified seeded locations, never user-created/edited venues.
+  if (!original || event.createdAt !== "2026-10-17T12:00:00+03:00"
+    || event.cityId !== original[3] || event.locationName !== original[4]
+    || event.location?.latitude !== original[5] || event.location?.longitude !== original[6]) return event;
+  const relocated = createMockMapEvents(event.creator)[index];
+  const oldOffset = original[3] === 4 ? "+05:00" : "+03:00";
+  const day = String(index + 1).padStart(2, "0");
+  return {
+    ...event, cityId: relocated.cityId, locationName: relocated.locationName, location: relocated.location,
+    title: event.title === original[0] ? relocated.title : event.title,
+    startsAt: event.startsAt === `2026-11-${day}T18:00:00${oldOffset}` ? relocated.startsAt : event.startsAt,
+    endsAt: event.endsAt === `2026-11-${day}T21:00:00${oldOffset}` ? relocated.endsAt : event.endsAt,
+  };
 }
