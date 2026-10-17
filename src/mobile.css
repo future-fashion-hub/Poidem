@@ -1,21 +1,4 @@
 /* Mobile layout shares the desktop tokens and accounts for phone safe areas. */
-/* Fit discovery to the available viewport only on phones and tablets. */
-@media (max-width: 1023px) {
-  .discovery-feed { padding-block: 12px; }
-  .discovery-feed .discovery-content { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto; row-gap: 10px; height: calc(100dvh - 164px - env(safe-area-inset-bottom)); min-height: 480px; }
-  .discovery-feed .discovery-heading { margin-bottom: 0; }
-  .discovery-feed .discovery-categories { flex-wrap: nowrap; overflow-x: auto; padding-block: 4px; margin: 0; }
-  .discovery-feed .discovery-categories button { flex: 0 0 auto; white-space: nowrap; }
-  .discovery-feed .discovery-progress { margin: 0; }
-  .discovery-feed .swipe-deck { height: 100%; min-height: 0; margin-block: 0; }
-  .discovery-feed .swipe-arrival, .discovery-feed .swipe-card { height: 100%; }
-  .discovery-feed .swipe-card { display: flex; flex-direction: column; }
-  .discovery-feed .swipe-artwork { flex: 1 1 auto; min-height: 140px; aspect-ratio: auto; }
-  .discovery-feed .swipe-artwork > img, .discovery-feed .swipe-placeholder { position: absolute; inset: 0; }
-  .discovery-feed .swipe-details { flex: 0 0 auto; padding: 12px 18px; }
-  .discovery-feed .swipe-social { margin-top: 8px; padding-top: 8px; }
-  .discovery-feed .swipe-actions, .discovery-feed .swipe-help { margin-top: 0; }
-}
 .plans-event-open { display: flex; flex: 1; flex-direction: column; width: 100%; min-width: 0; text-align: left; cursor: pointer; }
 .plans-event-open:focus-visible { outline: 3px solid #709d29; outline-offset: -3px; }
 .plans-event-participation { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 0 18px 14px; font-size: 12px; color: #426627; }
@@ -28,16 +11,6 @@
   .atlas-filter-controls[data-expanded="true"] { padding-top: 16px; }
 }
 @media (max-width: 767px) {
-  .discovery-feed { padding-block: 8px; }
-  .discovery-feed .discovery-content { height: calc(100dvh - 152px - env(safe-area-inset-bottom)); row-gap: 8px; }
-  .discovery-feed .discovery-intro { display: none; }
-  .discovery-feed .discovery-counter { margin-top: 0; }
-  .discovery-feed .discovery-heading h1 { font-size: 27px; margin-top: 4px; }
-  .discovery-feed .swipe-title { left: 16px; right: 16px; bottom: 14px; }
-  .discovery-feed .swipe-title h2 { font-size: 22px; -webkit-line-clamp: 2; }
-  .discovery-feed .swipe-description { display: none; }
-  .discovery-feed .swipe-help { font-size: 11px; gap: 2px; }
-  .discovery-feed .swipe-help small { font-size: 10px; }
   .atlas-page.map-page { padding-top: 16px; }
   .atlas-page .atlas-heading { margin-bottom: 14px; }
   .atlas-page .atlas-heading h1 { font-size: 27px; margin-top: 4px; }
@@ -246,10 +219,6 @@ button, a { touch-action: manipulation; }
   .discovery-counter:not(:focus-visible)::after { display: none; }
 }
 
-/* Keep these overrides after the original phone layout. */
 @media (max-width: 767px) {
-  .discovery-feed { padding-block: 8px; }
-  .discovery-feed .discovery-content .discovery-categories { padding: 2px 0; }
-  .discovery-feed .swipe-action--undo { grid-column: 1 / -1; min-height: 40px; padding-block: 8px; }
   .atlas-page .atlas-heading > div > p:last-child { display: none; }
 }

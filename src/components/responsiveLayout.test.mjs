@@ -30,9 +30,13 @@ for (const width of [1024, 1440, 1920]) test(`desktop feed keeps its original ca
   assert.equal(declarations(".swipe-artwork", width)["aspect-ratio"], "1 / 1.08");
 });
 
-for (const width of [390, 767, 768, 1023]) test(`mobile feed still fits the available viewport at ${width}px`, () => {
-  assert.match(declarations(".discovery-feed .discovery-content", width).height, /100dvh/);
-  assert.equal(declarations(".discovery-feed .swipe-deck", width).height, "100%");
+for (const width of [390, 663, 767, 768, 1023]) test(`phone/tablet feed keeps its pre-UX card proportions at ${width}px`, () => {
+  assert.equal(declarations(".discovery-feed .discovery-content", width).height, undefined);
+  assert.equal(declarations(".discovery-feed .swipe-deck", width).height, undefined);
+  assert.equal(declarations(".discovery-feed .swipe-card", width).height, undefined);
+  assert.equal(declarations(".discovery-feed .swipe-artwork", width)["aspect-ratio"], undefined);
+  assert.equal(declarations(".swipe-deck", width)["max-width"], "480px");
+  assert.equal(declarations(".swipe-artwork", width)["aspect-ratio"], width <= 767 ? "1 / 1" : "1 / 1.08");
 });
 
 test("map filter collapse is mobile-only and does not use the global hidden attribute", () => {
