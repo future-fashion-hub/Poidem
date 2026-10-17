@@ -44,7 +44,8 @@ function componentHarness(path, modules = {}, environment = {}) {
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText;
-  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", code)(name => {
+  const componentCode = code + (environment.component ? `\nexports.default = ${environment.component};` : "");
+  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", componentCode)(name => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
     if (name in modules) return modules[name];
@@ -69,6 +70,29 @@ function find(node, predicate) {
 }
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+for (const soloJoined of [false, true]) test(`solo button has aligned layout and distinct color/icon state (joined=${soloJoined})`, () => {
+  const harness = componentHarness("../App.tsx", {
+    "./components/usePopupDismiss": { usePopupDismiss: () => ({ closing: false, dismiss() {} }) },
+    "./components/useModalDialog": { useModalDialog() {} },
+  }, { component: "EventDrawer" });
+  let clicks = 0;
+  const props = {
+    event: { id: 42, title: "Встреча", startsAt: "2026-11-01T12:00:00+03:00", participantsCount: 3 },
+    companies: [], joinedCompanyIds: [], soloJoined, soloLoading: false, soloSaving: false, membershipError: "",
+    onSolo: () => clicks++, onCreate() {}, onClose() {}, onJoin() {}, onReloadParticipation() {},
+  };
+  const tree = harness.render(props);
+  const actions = find(tree, node => node.props?.className === "event-modal-actions");
+  assert.equal(actions.props.children.length, 2);
+  assert.ok(actions.props.children.every(child => child.type === "button"), "status text must not stretch the other button");
+  const button = actions.props.children[0];
+  assert.equal(button.props["data-joined"], soloJoined);
+  assert.equal(button.props.children[0].props.name, soloJoined ? "close" : "check");
+  assert.equal(button.props.children[1], soloJoined ? "Отменить участие" : "Пойду самостоятельно");
+  button.props.onClick(); assert.equal(clicks, 1);
+  assert.equal(Boolean(find(tree, node => node.props?.className === "event-solo-status")), soloJoined);
+});
 
 for (const includeTime of [false, true]) {
   test(`calendar stays open after selection and clearing; Done closes it (includeTime=${includeTime})`, () => {

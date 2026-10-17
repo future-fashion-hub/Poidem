@@ -486,9 +486,10 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
         {event.description ? <p className="event-modal-description">{event.description}</p> : null}
 
         <div className="event-modal-actions">
-          <div className="event-solo-action">{soloJoined && <p role="status">Вы идёте самостоятельно</p>}<button type="button" disabled={soloSaving || (soloLoading && !membershipError)} onClick={membershipError ? onReloadParticipation : onSolo} className="event-modal-action-primary"><Icon name="check" size={19}/>{soloSaving ? "Сохраняем…" : membershipError ? "Проверить участие ещё раз" : soloLoading ? "Проверяем участие…" : soloJoined ? "Отменить участие" : "Пойду самостоятельно"}</button></div>
+          <button type="button" disabled={soloSaving || (soloLoading && !membershipError)} aria-busy={soloSaving || (soloLoading && !membershipError)} data-joined={soloJoined} onClick={membershipError ? onReloadParticipation : onSolo} className="event-modal-action-primary"><Icon name={soloJoined ? "close" : "check"} size={19}/>{soloSaving ? "Сохраняем…" : membershipError ? "Проверить участие ещё раз" : soloLoading ? "Проверяем участие…" : soloJoined ? "Отменить участие" : "Пойду самостоятельно"}</button>
           <button type="button" onClick={onCreate} className="event-modal-action-secondary"><Icon name="plus" size={19}/>Создать компанию</button>
         </div>
+        {soloJoined && <p className="event-solo-status" role="status">Вы идёте самостоятельно</p>}
 
         <section className="event-modal-companies" aria-labelledby={`event-companies-title-${event.id}`}>
           <div className="event-modal-section-heading">

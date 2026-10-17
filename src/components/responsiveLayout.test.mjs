@@ -51,3 +51,12 @@ test("map filter collapse is mobile-only and does not use the global hidden attr
     assert.equal(declarations(".atlas-mobile-filter-toggle", width).display, "none");
   }
 });
+
+test("solo participation changes color without stretching the action row", () => {
+  const row = declarations(".event-modal-actions", 1440);
+  assert.equal(row["align-items"], "start");
+  assert.equal(row["grid-template-columns"], "1fr 1fr");
+  assert.equal(declarations(".event-modal-actions button", 1440)["min-height"], "54px");
+  assert.equal(declarations('.event-modal-action-primary[data-joined="true"]', 1440).background, "var(--ink)");
+  assert.equal(declarations('.event-modal-action-primary[data-joined="true"]', 1440).color, "var(--lime)");
+});
