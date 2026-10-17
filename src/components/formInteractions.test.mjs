@@ -4,8 +4,16 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 // Exercise the real component callbacks without a browser or network requests.
-function componentHarness(path, modules = {}) {
+function pureModule(path) {
+  const exports = {};
+  const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  new Function("exports", code)(exports);
+  return exports;
+}
+
+function componentHarness(path, modules = {}, environment = {}) {
   const states = [], effects = [];
+  const storage = new Map(Object.entries(environment.storage ?? {})), timers = [];
   let cursor = 0;
   const react = {
     useState(initial) {
@@ -13,32 +21,44 @@ function componentHarness(path, modules = {}) {
       if (!(index in states)) states[index] = typeof initial === "function" ? initial() : initial;
       return [states[index], next => { states[index] = typeof next === "function" ? next(states[index]) : next; }];
     },
-    useRef: current => ({ current }),
+    useRef(current) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = { current };
+      return states[index];
+    },
     useId: () => "test-picker",
     useMemo: factory => factory(),
+    useCallback: callback => callback,
     useEffect: effect => effects.push(effect),
     useLayoutEffect: () => {},
     lazy: () => function Lazy() {},
   };
   const jsx = (type, props) => ({ type, props });
   const window = {
-    location: { hash: "#feed", search: "" },
-    setTimeout: () => 1,
+    location: { hash: environment.hash ?? "#feed", search: "" },
+    setTimeout: callback => { timers.push(callback); return timers.length; },
+    clearTimeout: () => {},
     matchMedia: () => ({ matches: false }),
   };
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText;
-  new Function("require", "exports", "window", code)(name => {
+  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", code)(name => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
     if (name in modules) return modules[name];
+    if (name === "react-dom") return { createPortal: node => node };
+    const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts" };
+    if (name in utilities) return pureModule(utilities[name]);
     return { __esModule: true, default: name };
-  }, exports, window);
+  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {});
   return {
     render(props) { cursor = 0; effects.length = 0; return exports.default(props); },
     runEffects() { return effects.map(effect => effect()).filter(Boolean); },
+    runEffectContaining(text) { return effects.find(effect => effect?.toString().includes(text))?.(); },
+    async runTimers() { for (const callback of timers.splice(0)) await callback(); },
+    storage,
   };
 }
 
@@ -47,6 +67,8 @@ function find(node, predicate) {
   if (!node || typeof node !== "object") return undefined;
   return predicate(node) ? node : find(node.props?.children, predicate);
 }
+const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
+const flush = () => new Promise(resolve => setImmediate(resolve));
 
 for (const includeTime of [false, true]) {
   test(`calendar stays open after selection and clearing; Done closes it (includeTime=${includeTime})`, () => {
@@ -82,6 +104,7 @@ for (const method of ["password", "social", "login"]) {
     const harness = componentHarness("../App.tsx", {
       "./api": { api: {
         listEventCompanies: async () => ({ items: [] }),
+        getEvent: async id => ({ id, title: "Event" }),
         registerWithPassword: async () => ({ user }),
         register: async () => ({ user }),
         loginWithPassword: async () => ({ user }),
@@ -119,3 +142,123 @@ for (const method of ["password", "social", "login"]) {
     assert.equal(get(tree, "EventDrawer"), undefined);
   });
 }
+
+test("password login preserves the feed and selected event without joining automatically", async () => {
+  let mutations = 0;
+  const user = { id: 1, firstName: "Анна", interests: [], isProfileComplete: true };
+  const event = { id: 42, title: "Встреча", participantsCount: 3, companiesCount: 1 };
+  const harness = componentHarness("../App.tsx", {
+    "./api": { api: { getEvent: async () => event, listEventCompanies: async () => ({ items: [] }), loginWithPassword: async () => ({ user }), joinEventSolo: async () => { mutations++; } } },
+    "./api/backendApi": { backendMode: false }, "./api/pagination": { collectPages: fetch => fetch({}) },
+  });
+  let tree = harness.render();
+  await getComponent(tree, "./components/EventFeed").props.onOpen(event);
+  tree = harness.render();
+  getComponent(tree, "EventDrawer").props.onSolo();
+  tree = harness.render();
+  await getComponent(tree, "AuthModal").props.onAdminLogin("anna", "password");
+  tree = harness.render();
+  assert.ok(getComponent(tree, "./components/EventFeed"));
+  assert.equal(getComponent(tree, "EventDrawer").props.event.id, 42);
+  assert.equal(getComponent(tree, "HomeHero"), undefined);
+  assert.equal(mutations, 0);
+});
+
+test("solo participation restores from server and cancellation updates drawer counters", async () => {
+  let joined = true, mutations = 0;
+  const user = { id: 1, firstName: "Анна", interests: [], isProfileComplete: true };
+  const event = () => ({ id: 42, title: "Встреча", participantsCount: joined ? 4 : 3, companiesCount: 1 });
+  const harness = componentHarness("../App.tsx", {
+    "./api": { api: {
+      getEvent: async () => event(), listEventCompanies: async () => ({ items: [] }), loginWithPassword: async () => ({ user }),
+      listMyEvents: async () => ({ items: joined ? [{ ...event(), relation: "participant" }] : [] }), listMyCompanies: async () => ({ items: [] }),
+      cancelEventSolo: async () => { joined = false; mutations++; },
+    } }, "./api/backendApi": { backendMode: false }, "./api/pagination": { collectPages: fetch => fetch({}) },
+  });
+  let tree = harness.render();
+  getComponent(tree, "Header").props.onAuth();
+  tree = harness.render();
+  await getComponent(tree, "AuthModal").props.onAdminLogin("anna", "password");
+  tree = harness.render();
+  harness.runEffectContaining("refreshParticipation");
+  await flush();
+  tree = harness.render();
+  await getComponent(tree, "./components/EventFeed").props.onOpen(event());
+  tree = harness.render();
+  assert.equal(getComponent(tree, "EventDrawer").props.soloJoined, true);
+  getComponent(tree, "EventDrawer").props.onSolo();
+  await flush();
+  tree = harness.render();
+  assert.equal(mutations, 1);
+  assert.equal(getComponent(tree, "EventDrawer").props.soloJoined, false);
+  assert.equal(getComponent(tree, "EventDrawer").props.event.participantsCount, 3);
+});
+
+test("replay restores an all-saved feed without losing guest favorites, including skip and undo", async () => {
+  const event = { id: 42, title: "Кофе и настолки", startsAt: "2026-11-01T12:00:00+03:00", status: "active", participantsCount: 1, companiesCount: 1 };
+  const harness = componentHarness("./EventFeed.tsx", { "../api": { backendMode: false, api: {} } }, {
+    storage: { "poidem-event-feed-actions:demo:guest": JSON.stringify({ 42: "save" }) },
+  });
+  const props = { userId: null, events: [event], categories: [], cities: [], onOpen() {}, favoritesOpen: false, onFavoritesChange() {} };
+  let tree = harness.render(props);
+  assert.equal(find(tree, node => node.type === "article"), undefined);
+  find(tree, node => node.type === "button" && node.props.children === "Посмотреть заново").props.onClick();
+  tree = harness.render(props);
+  assert.ok(find(tree, node => node.type === "article"));
+  find(tree, node => node.props?.className === "swipe-action swipe-action--skip").props.onClick();
+  await harness.runTimers();
+  tree = harness.render(props);
+  assert.equal(find(tree, node => node.type === "article"), undefined);
+  assert.equal(JSON.parse(harness.storage.get("poidem-event-feed-actions:demo:guest"))[42], "save");
+  await find(tree, node => node.props?.className === "swipe-action swipe-action--undo").props.onClick();
+  tree = harness.render(props);
+  assert.ok(find(tree, node => node.type === "article"));
+  assert.equal(JSON.parse(harness.storage.get("poidem-event-feed-actions:demo:guest"))[42], "save");
+});
+
+test("home filters expose text, city and category with independent clearing", () => {
+  const harness = componentHarness("./CatalogFilters.tsx");
+  const changes = [];
+  const tree = harness.render({ search: "джаз", cityId: 1, categoryId: 2, cities: [{ id: 1, name: "Москва" }], categories: [{ id: 2, name: "Музыка" }], onSearch: value => changes.push(["search", value]), onCity: value => changes.push(["city", value]), onCategory: value => changes.push(["category", value]), onReset: () => changes.push(["reset"]) });
+  find(tree, node => node.props?.type === "search").props.onChange({ target: { value: "кофе" } });
+  find(tree, node => node.props?.id === "test-picker-city" && node.type === "./SiteSelect").props.onChange("3");
+  find(tree, node => node.props?.id === "test-picker-category" && node.type === "./SiteSelect").props.onChange("4");
+  find(tree, node => node.props?.className === "catalog-reset").props.onClick();
+  assert.deepEqual(changes, [["search", "кофе"], ["city", 3], ["category", 4], ["reset"]]);
+});
+
+test("plain visits do not initiate geolocation", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.equal(app.includes("getNearbyLocation"), false);
+});
+
+test("company creation refreshes both the event drawer and the background feed", async () => {
+  let companyCount = 1;
+  const user = { id: 1, firstName: "Анна", interests: [], isProfileComplete: true };
+  const event = () => ({ id: 42, title: "Встреча", participantsCount: companyCount, companiesCount: companyCount });
+  const harness = componentHarness("../App.tsx", {
+    "./api": { api: {
+      listEvents: async () => ({ items: [event()] }), getEvent: async () => event(),
+      listEventCompanies: async () => ({ items: [{ id: 7, eventId: 42 }] }),
+      loginWithPassword: async () => ({ user }), listMyEvents: async () => ({ items: [] }), listMyCompanies: async () => ({ items: [] }),
+    } }, "./api/backendApi": { backendMode: false }, "./api/pagination": { collectPages: fetch => fetch({}) },
+  });
+  let tree = harness.render();
+  harness.runEffectContaining("listEvents");
+  await harness.runTimers(); await flush();
+  tree = harness.render();
+  assert.equal(getComponent(tree, "./components/EventFeed").props.events[0].companiesCount, 1);
+  getComponent(tree, "Header").props.onAuth();
+  tree = harness.render();
+  await getComponent(tree, "AuthModal").props.onAdminLogin("anna", "password");
+  tree = harness.render();
+  await getComponent(tree, "./components/EventFeed").props.onOpen(event());
+  tree = harness.render();
+  getComponent(tree, "EventDrawer").props.onCreate();
+  tree = harness.render();
+  companyCount = 2;
+  await getComponent(tree, "CreateCompanyModal").props.onCreated();
+  tree = harness.render();
+  assert.equal(getComponent(tree, "EventDrawer").props.event.companiesCount, 2);
+  assert.equal(getComponent(tree, "./components/EventFeed").props.events[0].companiesCount, 2);
+});

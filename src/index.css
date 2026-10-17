@@ -756,7 +756,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Фильтры доступны на отдельной странице карты, а главная оставляет каталог лёгким. */
 #events > .grid { display: block; }
-#events > .grid > aside { display: none; }
+.catalog-filters { margin-bottom: 24px; padding: 18px; border: 1px solid var(--line); border-radius: 22px; background: #fff; }
+.catalog-filter-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; align-items: end; gap: 14px; }
+.catalog-filter-fields > *, .catalog-filter-fields .site-select { min-width: 0; }
+.catalog-filter-fields label { display: block; color: var(--ink-soft); font-size: 13px; font-weight: 700; }
+.catalog-filter-fields input { display: block; width: 100%; min-height: 46px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #f7faf3; color: var(--ink); font-size: 16px; }
+.catalog-filter-fields label + .site-select { margin-top: 8px; }
+.catalog-active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.catalog-active-filters button { min-height: 44px; max-width: 100%; padding: 8px 12px; border-radius: 999px; background: #eff7e3; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
+.catalog-active-filters .catalog-reset { background: transparent; text-decoration: underline; }
+.atlas-mobile-filter-toggle { display: none; }
+.atlas-filter-controls > .site-select { margin-bottom: 20px; }
+@media (min-width: 1024px) { .atlas-filter-controls[hidden] { display: block; } }
+.event-solo-action { display: flex; flex-direction: column; gap: 8px; }
+.event-solo-action > p { font-size: 13px; color: #426627; font-weight: 700; }
+.event-solo-action button { width: 100%; }
+.event-modal-actions button:disabled { opacity: .55; cursor: wait; }
+@media (max-width: 767px) {
+  .catalog-filters { padding: 14px; }
+  .catalog-filter-fields { grid-template-columns: minmax(0, 1fr); }
+}
 
 .chats-page { color: var(--ink, #102318); }
 .chats-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 26px; }

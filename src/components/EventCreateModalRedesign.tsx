@@ -1,4 +1,5 @@
 import { usePopupDismiss } from "./usePopupDismiss";
+import { useModalDialog } from "./useModalDialog";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -33,7 +34,6 @@ function PointPicker({ point, title, imageUrl, onPick }: { point: Coordinates | 
 }
 
 export default function EventCreateModalRedesign({ cities, categories, onClose: onDismiss, onCreated }: Props) {
-  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState(0);
   const [cityId, setCityId] = useState(0);
@@ -51,6 +51,9 @@ export default function EventCreateModalRedesign({ cities, categories, onClose: 
   const [saving, setSaving] = useState(false);
   const firstField = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLFormElement>(null);
+  const dirty = Boolean(title || categoryId || cityId || startsAt || endsAt || locationName || address || description || point || cover);
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss, true, { dirty, busy: saving });
+  useModalDialog(dialog, onClose);
   const coverScroll = useRef<number | null>(null);
   const rememberCoverScroll = () => { coverScroll.current = dialog.current?.scrollTop ?? null; };
   const restoreCoverScroll = () => {

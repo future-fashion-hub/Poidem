@@ -21,6 +21,7 @@ export type User = UserShort & {
 };
 
 export type Event = {
+  relation?: "creator" | "participant" | "creator_and_participant";
   id: number;
   title: string;
   description: string | null;

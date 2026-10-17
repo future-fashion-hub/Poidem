@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // Keep the popup mounted (and the page locked) until its exit finishes.
-export function usePopupDismiss(onDismiss: () => void, open = true) {
+export function usePopupDismiss(onDismiss: () => void, open = true, options: { dirty?: boolean; busy?: boolean } = {}) {
   const [closing, setClosing] = useState(false);
   const callback = useRef(onDismiss);
   const pending = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guard = useRef(options);
+  guard.current = options;
   useEffect(() => { callback.current = onDismiss; }, [onDismiss]);
   useEffect(() => {
     if (!open) {
@@ -18,6 +20,8 @@ export function usePopupDismiss(onDismiss: () => void, open = true) {
   useEffect(() => () => { if (timer.current !== null) clearTimeout(timer.current); }, []);
   const dismiss = useCallback(() => {
     if (pending.current) return;
+    if (guard.current.busy) return;
+    if (guard.current.dirty && !window.confirm("Закрыть форму? Несохранённые данные будут потеряны.")) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { callback.current(); return; }
     pending.current = true;
     setClosing(true);

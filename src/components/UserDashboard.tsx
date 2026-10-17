@@ -5,10 +5,12 @@ import GroupsOutlined from "@mui/icons-material/GroupsOutlined"
 import NotificationsNoneOutlined from "@mui/icons-material/NotificationsNoneOutlined"
 import ArrowOutward from "@mui/icons-material/ArrowOutward"
 import EditOutlined from "@mui/icons-material/EditOutlined"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { api } from "../api"
 import { backendApi, backendMode } from "../api/backendApi"
 import { collectPages } from "../api/pagination"
+import { soloEventIds } from "../api/eventParticipation"
+import { countWord } from "../api/russianCount"
 import { companyEventAvailable, loadCompanyEvents, type CompanyEventIndex } from "../api/companyAvailability"
 import { useEventClock } from "./useEventClock"
 import type {
@@ -26,6 +28,8 @@ import EventIcon from "./EventIcon"
 
 type Tab = "profile" | "events" | "companies" | "applications"
 type Props = {
+  revision: number
+  onEventChanged: (id: number) => Promise<Event>
   user: User
   cities: DictionaryItem[]
   interests: DictionaryItem[]
@@ -63,9 +67,13 @@ export default function UserDashboard({
   onOpenEvent,
   onFindEvents,
   onOpenChats,
+  revision,
+  onEventChanged,
 }: Props) {
   const [tab, setTab] = useState<Tab>("profile")
   const [events, setEvents] = useState<Event[]>([])
+  const [soloIds, setSoloIds] = useState<number[]>([])
+  const [cancelling, setCancelling] = useState<number | null>(null)
   const [allCompanies, setCompanies] = useState<Company[]>([])
   const [companyEvents, setCompanyEvents] = useState<CompanyEventIndex>({})
   const now = useEventClock(companyEvents)
@@ -75,7 +83,9 @@ export default function UserDashboard({
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
+  const loadRequest = useRef(0)
   const load = async () => {
+    const request = ++loadRequest.current
     setError("")
     try {
       const [a, b, c] = await Promise.all([
@@ -84,21 +94,34 @@ export default function UserDashboard({
         collectPages(options => backendMode ? backendApi.listMyApplications(options) : api.listMyApplications()),
       ])
       const index = await loadCompanyEvents(b.items, a.items, id => api.getEvent(id))
+      if (request !== loadRequest.current) return
       setCompanyEvents(index)
       setEvents(a.items)
+      setSoloIds(soloEventIds(a.items, b.items))
       setCompanies(b.items)
       setApplications(c.items)
     } catch (caught) {
+      if (request !== loadRequest.current) return
       setError(
         caught instanceof Error ? caught.message : "Не удалось обновить данные",
       )
     } finally {
-      setLoading(false)
+      if (request === loadRequest.current) setLoading(false)
     }
   }
   useEffect(() => {
     void load()
-  }, [])
+  }, [user.id, revision])
+  const cancelSolo = async (id: number) => {
+    if (cancelling !== null) return
+    setCancelling(id)
+    try {
+      await api.cancelEventSolo(id)
+      setSoloIds(previous => previous.filter(item => item !== id))
+      await Promise.all([load(), onEventChanged(id)])
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось отменить участие") }
+    finally { setCancelling(null) }
+  }
   const initials = `${user.firstName[0] ?? "П"}${user.lastName?.[0] ?? ""}`;
   const counts = { profile: null, events: events.length, companies: companies.length, applications: applications.filter(item => item.status === "pending").length };
   const empty = (title: string, description: string) => <div className="plans-empty"><CalendarMonthOutlined/><h3>{title}</h3><p>{description}</p><button className="plans-button plans-button--primary" onClick={onFindEvents}>Найти событие <ArrowOutward fontSize="small"/></button></div>;
@@ -143,15 +166,15 @@ export default function UserDashboard({
           {tab === "events" && <section>
             <div className="plans-section-heading"><div><p className="plans-eyebrow">Ваш календарь впечатлений</p><h2>Мои события</h2></div><span>{loading ? "Загружаем…" : `Всего: ${events.length}`}</span></div>
             {!loading && !error && !events.length && empty("Планы ещё впереди", "Сохраните участие в событии, и оно появится здесь.")}
-            <div className="plans-events-grid">{events.map(event => <button className="plans-event" key={event.id} onClick={() => onOpenEvent(event)}>
+            <div className="plans-events-grid">{events.map(event => <article className="plans-event" key={event.id}><button type="button" className="plans-event-open" aria-label={`Открыть событие: ${event.title}`} onClick={() => onOpenEvent(event)}>
               <div className="plans-event-image">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <CalendarMonthOutlined/>}<span className="plans-status" data-status={event.status}>{eventLabels[event.status]}</span></div>
-              <div className="plans-event-body"><time dateTime={event.startsAt}>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt))}</time><h3>{event.title}</h3><p className="plans-event-location"><EventIcon name="pin"/><span>{event.locationName}</span></p><div className="plans-event-social"><span><b>{event.participantsCount}</b> идут</span><span><EventIcon name="users"/><b>{event.companiesCount}</b> компаний</span></div>{event.moderationReason && <p className="plans-error">Причина: {event.moderationReason}</p>}<span className="plans-event-link">Открыть событие <ArrowOutward fontSize="small"/></span></div>
-            </button>)}</div>
+              <div className="plans-event-body"><time dateTime={event.startsAt}>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(event.startsAt))}</time><h3>{event.title}</h3><p className="plans-event-location"><EventIcon name="pin"/><span>{event.locationName}</span></p><div className="plans-event-social"><span><b>{event.participantsCount}</b> {countWord(event.participantsCount, "members") === "участник" ? "идёт" : "идут"}</span><span><EventIcon name="users"/><b>{event.companiesCount}</b> {countWord(event.companiesCount, "companies")}</span></div>{event.moderationReason && <p className="plans-error">Причина: {event.moderationReason}</p>}<span className="plans-event-link">Открыть событие <ArrowOutward fontSize="small"/></span></div>
+            </button>{soloIds.includes(event.id) && <div className="plans-event-participation"><span>Вы идёте самостоятельно</span><button type="button" disabled={cancelling !== null} onClick={() => { void cancelSolo(event.id) }}>{cancelling === event.id ? "Отменяем…" : "Отменить участие"}</button></div>}</article>)}</div>
           </section>}
           {tab === "companies" && <section>
             <div className="plans-section-heading"><div><p className="plans-eyebrow">Те, с кем вы идёте</p><h2>Мои компании</h2></div><span>{loading ? "Загружаем…" : `Всего: ${companies.length}`}</span></div>
             {!loading && !error && !companies.length && empty("Найдите своих людей", "Выберите событие и присоединитесь к компании или создайте свою.")}
-            <div className="plans-company-list">{companies.map(company => <CompanyCard key={company.id} company={company} user={user} onChanged={load} onOpenChats={onOpenChats}/>)}</div>
+            <div className="plans-company-list">{companies.map(company => <CompanyCard key={company.id} company={company} user={user} onChanged={async () => { await onEventChanged(company.eventId); await load() }} onOpenChats={onOpenChats}/>)}</div>
           </section>}
           {tab === "applications" && <section>
             <div className="plans-section-heading"><div><p className="plans-eyebrow">На связи с организаторами</p><h2>Мои заявки</h2></div><span>{loading ? "Загружаем…" : `Всего: ${applications.length}`}</span></div>

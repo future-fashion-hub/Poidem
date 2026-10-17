@@ -8,6 +8,7 @@ import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
 import { api, backendMode } from "../api";
 import { backendApi } from "../api/backendApi";
 import { collectPages } from "../api/pagination";
+import { countLabel } from "../api/russianCount";
 import { companyEventAvailable, loadCompanyEvents, type CompanyEventIndex } from "../api/companyAvailability";
 import { useEventClock } from "./useEventClock";
 import { connectCompanyChat, type ChatConnection, type ChatState } from "../api/companyChatSocket";
@@ -124,14 +125,14 @@ export default function ChatsPage({ userId }: { userId: number }) {
         <label className="chat-search"><SearchOutlined fontSize="small"/><span className="sr-only">Поиск по вашим чатам</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Найти компанию"/></label>
         <nav className="chat-company-list" aria-label="Чаты компаний">
           {loading ? <p className="chat-list-notice" role="status">Загружаем ваши чаты…</p> : visibleCompanies.length ? visibleCompanies.map(company => <button key={company.id} className="chat-company" aria-current={selected?.id === company.id ? "page" : undefined} onClick={() => { setSelected(company); setMobileConversation(true); }}>
-            <span className="chat-company-avatar">{company.name.slice(0, 1).toUpperCase()}</span><span className="chat-company-copy"><strong>{company.name}</strong><small>{company.membersCount} участников</small></span><ForumOutlined className="chat-company-icon" fontSize="small"/>
+            <span className="chat-company-avatar">{company.name.slice(0, 1).toUpperCase()}</span><span className="chat-company-copy"><strong>{company.name}</strong><small>{countLabel(company.membersCount, "members")}</small></span><ForumOutlined className="chat-company-icon" fontSize="small"/>
           </button>) : <div className="chat-list-notice"><span className="chat-empty-icon"><ForumOutlined aria-hidden="true"/></span><p>{search ? "По этому запросу чатов нет." : "Присоединитесь к компании, чтобы начать общение."}</p></div>}
         </nav>
         <p className="chat-sidebar-foot">Здесь только компании, в которые вы вступили.</p>
       </aside>
       <div className="chat-conversation">
         {selected ? <>
-          <header className="chat-topbar"><button type="button" className="chat-back" aria-label="К списку чатов" onClick={() => setMobileConversation(false)}><ArrowBackRounded/></button><span className="chat-company-avatar">{selected.name.slice(0, 1).toUpperCase()}</span><div className="chat-topbar-title"><h2>{selected.name}</h2><p><span className={`chat-connection-dot ${connection === "connected" || connection === "demo" ? "is-connected" : ""}`}/>{stateLabel[connection]} · {selected.membersCount} участников</p></div></header>
+          <header className="chat-topbar"><button type="button" className="chat-back" aria-label="К списку чатов" onClick={() => setMobileConversation(false)}><ArrowBackRounded/></button><span className="chat-company-avatar">{selected.name.slice(0, 1).toUpperCase()}</span><div className="chat-topbar-title"><h2>{selected.name}</h2><p><span className={`chat-connection-dot ${connection === "connected" || connection === "demo" ? "is-connected" : ""}`}/>{stateLabel[connection]} · {countLabel(selected.membersCount, "members")}</p></div></header>
           <div ref={scrollArea} className="chat-messages" onScroll={event => { const area = event.currentTarget; followLatest.current = area.scrollHeight - area.scrollTop - area.clientHeight < 90; }}>
             {historyLoading && <p className="chat-history-loading" role="status">Загружаем переписку…</p>}
             {!historyLoading && !messages.length && <div className="chat-empty"><span className="chat-empty-icon"><ForumOutlined fontSize="large"/></span><h3>Знакомство начинается с «привет»</h3><p>Договоритесь о встрече, задайте вопрос или просто представьтесь своей компании.</p></div>}

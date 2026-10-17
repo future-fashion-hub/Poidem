@@ -1,11 +1,11 @@
 import { usePopupDismiss } from "./usePopupDismiss";
-import { useState } from "react";
+import { useModalDialog } from "./useModalDialog";
+import { useRef, useState } from "react";
 import BrandLogo from "./BrandLogo";
 import SocialAuthButtons, { type SocialProvider } from "./SocialAuthButtons";
 import PasswordVisibilityButton from "./PasswordVisibilityButton";
 
 export default function RegisterModal({ onClose: onDismiss, onLogin, onRegister, onPasswordRegister }: { onClose: () => void; onLogin: () => void; onRegister: (provider: SocialProvider) => Promise<void>; onPasswordRegister: (username: string, password: string) => Promise<void> }) {
-  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const [accepted, setAccepted] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +14,9 @@ export default function RegisterModal({ onClose: onDismiss, onLogin, onRegister,
   const [showRepeatPassword, setShowRepeatPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss, true, { busy: loading, dirty: Boolean(username || password || repeatPassword || accepted) });
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalDialog(dialogRef, onClose);
 
   const showError = (caught: unknown) => setError(caught instanceof Error ? caught.message : "Не удалось создать аккаунт");
   const registerSocial = async (provider: SocialProvider) => { setLoading(true); setError(""); try { await onRegister(provider); } catch (caught) { showError(caught); setLoading(false); } };
@@ -27,7 +30,7 @@ export default function RegisterModal({ onClose: onDismiss, onLogin, onRegister,
   };
 
   return <div data-closing={closing || undefined} className="auth-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-    <section className="auth-card auth-card--register" role="dialog" aria-modal="true" aria-labelledby="register-title">
+    <section ref={dialogRef} tabIndex={-1} className="auth-card auth-card--register" role="dialog" aria-modal="true" aria-labelledby="register-title">
       <button type="button" onClick={onClose} aria-label="Закрыть регистрацию" className="auth-close">×</button>
       <BrandLogo/>
       <div className="auth-progress" aria-label="Этап регистрации"><span className="is-active"><i>1</i>Аккаунт</span><b/><span><i>2</i>Профиль</span></div>

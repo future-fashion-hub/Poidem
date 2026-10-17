@@ -1,4 +1,6 @@
 import { usePopupDismiss } from "./usePopupDismiss";
+import { useModalDialog } from "./useModalDialog";
+import { countLabel, countWord } from "../api/russianCount";
 import { useEffect, useMemo, useRef, useState } from "react";
 import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
 import { createPortal } from "react-dom";
@@ -71,7 +73,9 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
   const [drag, setDrag] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [exit, setExit] = useState<FeedAction | null>(null);
-  const [lastAction, setLastAction] = useState<{ id: number; action: FeedAction } | null>(null);
+  const [lastAction, setLastAction] = useState<{ id: number; action: FeedAction; wasSaved: boolean } | null>(null);
+  const [replaying, setReplaying] = useState(false);
+  const [reviewedAgain, setReviewedAgain] = useState<number[]>([]);
   const [announcement, setAnnouncement] = useState("");
   const gesture = useRef<{ id: number; x: number; y: number; dx: number; axis: "x" | "y" | null } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,7 +135,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
     };
   }, [events.length, categoryId]);
   const activeEvents = useMemo(() => events.filter(item => item.status === "active" && (categoryId === null || item.categoryId === categoryId)), [events, categoryId]);
-  const queue = useMemo(() => activeEvents.filter(item => !actions[item.id]), [actions, activeEvents]);
+  const queue = useMemo(() => activeEvents.filter(item => replaying ? !reviewedAgain.includes(item.id) : !actions[item.id]), [actions, activeEvents, replaying, reviewedAgain]);
   const event = queue[0];
   const savedCount = serverFavorites ? remoteFavorites.length : Object.values(actions).filter(item => item === "save").length;
   const favorites = useMemo(() => serverFavorites
@@ -151,6 +155,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
     if (!event || busy.current) return;
     busy.current = true;
     const id = event.id;
+    const wasSaved = serverFavorites ? remoteFavorites.some(item => item.eventId === id) : actions[id] === "save";
     const title = event.title;
     gesture.current = null;
     setDragging(false);
@@ -170,7 +175,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
         }
       }
       setActions(previous => {
-        const next = { ...previous, [id]: action };
+        const next = { ...previous, [id]: wasSaved ? "save" as const : action };
         saveActions(serverFavorites ? Object.fromEntries(Object.entries(next).filter(([, value]) => value === "skip")) : next, actionKey);
         return next;
       });
@@ -179,7 +184,8 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
         persistSavedEvents(next, guestSavedKey);
         return next;
       });
-      setLastAction({ id, action });
+      setReviewedAgain(previous => [...new Set([...previous, id])]);
+      setLastAction({ id, action, wasSaved });
       setAnnouncement(action === "save" ? `«${title}» сохранено в подборке` : `«${title}» пропущено`);
       setDrag(0);
       setExit(null);
@@ -189,7 +195,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
   };
   const undo = async () => {
     if (!lastAction || busy.current) return;
-    if (lastAction.action === "save" && serverFavorites) {
+    if (lastAction.action === "save" && !lastAction.wasSaved && serverFavorites) {
       busy.current = true;
       try {
         await api.removeFavorite(lastAction.id);
@@ -200,11 +206,12 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
     cancelDrag();
     setActions(previous => {
       const next = { ...previous };
-      delete next[lastAction.id];
+      if (lastAction.wasSaved) next[lastAction.id] = "save"; else delete next[lastAction.id];
       saveActions(serverFavorites ? Object.fromEntries(Object.entries(next).filter(([, value]) => value === "skip")) : next, actionKey);
       return next;
     });
-    if (lastAction.action === "save" && !serverFavorites) setSavedById(previous => {
+    setReviewedAgain(previous => previous.filter(id => id !== lastAction.id));
+    if (lastAction.action === "save" && !lastAction.wasSaved && !serverFavorites) setSavedById(previous => {
       const next = { ...previous };
       delete next[lastAction.id];
       persistSavedEvents(next, guestSavedKey);
@@ -216,6 +223,8 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
   const reset = () => {
     if (busy.current) return;
     cancelDrag();
+    setReplaying(true);
+    setReviewedAgain([]);
     setActions(previous => {
       const next = Object.fromEntries(Object.entries(previous).filter(([, action]) => action === "save")) as ActionRecord;
       saveActions(serverFavorites ? {} : next, actionKey);
@@ -312,7 +321,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
     <div className="discovery-content">
       <header className="discovery-heading">
         <div><p className="discovery-eyebrow">Планы по настроению</p><h1>А что, если пойти<span>?</span></h1><p className="discovery-intro">Листайте события. Сохраняйте то, что откликается.</p></div>
-        <button ref={favoritesTriggerRef} type="button" className="discovery-counter" aria-label={`Открыть избранное: ${savedCount} событий`} aria-haspopup="dialog" aria-expanded={favoritesOpen} data-tooltip="Избранное" onClick={() => onFavoritesChange(true)}>
+        <button ref={favoritesTriggerRef} type="button" className="discovery-counter" aria-label={`Открыть избранное: ${countLabel(savedCount, "events")}`} aria-haspopup="dialog" aria-expanded={favoritesOpen} data-tooltip="Избранное" onClick={() => onFavoritesChange(true)}>
           <FavoriteRounded aria-hidden="true"/>
           <b aria-hidden="true">{savedCount > 99 ? "99+" : savedCount}</b>
         </button>
@@ -340,7 +349,7 @@ export default function EventFeed({ userId, events, categories, cities, onOpen, 
               <div className="swipe-details">
                 <p className="swipe-location">{event.locationName}</p>
                 <p className="swipe-description">{event.description || "Откройте событие, чтобы узнать подробности и найти компанию."}</p>
-                <div className="swipe-social"><span><b>{event.participantsCount}</b> планируют пойти</span><span><EventIcon name="users"/><b>{event.companiesCount}</b> компаний</span></div>
+                <div className="swipe-social"><span><b>{event.participantsCount}</b> {countWord(event.participantsCount, "members") === "участник" ? "планирует" : "планируют"} пойти</span><span><EventIcon name="users"/><b>{event.companiesCount}</b> {countWord(event.companiesCount, "companies")}</span></div>
               </div>
             </article>
           </div>
@@ -376,6 +385,7 @@ function FavoritesDrawer({ favorites, loading, error, importCount, importing, on
   const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  useModalDialog(panelRef, onClose);
 
   useEffect(() => { closeRef.current?.focus({ preventScroll: true }); }, []);
   const handleKeyDown = (keyboard: ReactKeyboardEvent<HTMLElement>) => {
@@ -391,7 +401,7 @@ function FavoritesDrawer({ favorites, loading, error, importCount, importing, on
     <section ref={panelRef} className="favorites-drawer" role="dialog" aria-modal="true" aria-labelledby="favorites-title" onKeyDown={handleKeyDown}>
       <header className="favorites-header">
         <div className="favorites-heading-icon" aria-hidden="true"><FavoriteRounded/></div>
-        <div className="favorites-heading-copy"><p>Ваша личная подборка</p><h2 id="favorites-title">Избранное<span>.</span></h2><span>{favorites.length} {favorites.length % 10 === 1 && favorites.length % 100 !== 11 ? "событие" : [2, 3, 4].includes(favorites.length % 10) && ![12, 13, 14].includes(favorites.length % 100) ? "события" : "событий"}</span></div>
+        <div className="favorites-heading-copy"><p>Ваша личная подборка</p><h2 id="favorites-title">Избранное<span>.</span></h2><span>{countLabel(favorites.length, "events")}</span></div>
         <button ref={closeRef} type="button" className="favorites-close" aria-label="Закрыть избранное" onClick={onClose}><FeedIcon name="close" size={21}/></button>
       </header>
       {importCount > 0 && <div className="favorites-import"><p>На этом устройстве есть прежние сохранения ({importCount}). Перенести доступные события в аккаунт? Снимки карточек не переносятся.</p><button type="button" disabled={importing || loading} onClick={onImport}>{importing ? "Переносим…" : "Перенести"}</button></div>}

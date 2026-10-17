@@ -1,6 +1,11 @@
 import { usePopupDismiss } from "./components/usePopupDismiss";
+import { useModalDialog } from "./components/useModalDialog";
+import CatalogFilters from "./components/CatalogFilters";
+import { countLabel } from "./api/russianCount";
+import { mergeEvent, soloEventIds } from "./api/eventParticipation";
+import { publicDictionary, publicEvents, technicalFixture } from "./api/publicCatalog";
 import { observeScrollCards } from "./components/scrollCardHover";
-import { FormEvent, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { backendApi, backendMode } from "./api/backendApi";
 import { collectPages } from "./api/pagination";
@@ -25,7 +30,6 @@ import MapOutlined from "@mui/icons-material/MapOutlined";
 import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
 import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
 import NearbyEvents from "./components/NearbyEvents";
-import { getNearbyLocation } from "./api/nearbyPermissions";
 
 const Globe = lazy(() => import("./components/Globe"));
 
@@ -62,7 +66,6 @@ const mockApi = api;
 
 export default function App() {
   useEffect(observeScrollCards, []);
-  useEffect(() => { void getNearbyLocation().catch(() => undefined); }, []);
   useEffect(() => {
     let touchInput = false;
     const clearTouchFocus = () => {
@@ -92,13 +95,27 @@ export default function App() {
   const [view, setView] = useState<View>(currentViewFromUrl);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [allEvents, setEvents] = useState<Event[]>([]);
+  const [hiddenCities, setHiddenCities] = useState<Set<number>>(new Set());
+  const [hiddenCategories, setHiddenCategories] = useState<Set<number>>(new Set());
+  const events = useMemo(() => publicEvents(allEvents, hiddenCities, hiddenCategories), [allEvents, hiddenCities, hiddenCategories]);
+  const isPublicEvent = useCallback((event: Event) => !technicalFixture(event.title) && !hiddenCities.has(event.cityId) && !hiddenCategories.has(event.categoryId), [hiddenCities, hiddenCategories]);
   const [cities, setCities] = useState<DictionaryItem[]>([]);
   const [categories, setCategories] = useState<DictionaryItem[]>([]);
   const [interests, setInterests] = useState<DictionaryItem[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [joinedCompanyIds, setJoinedCompanyIds] = useState<number[]>([]);
+  const [soloIds, setSoloIds] = useState<number[] | null>(null);
+  const [membershipError, setMembershipError] = useState("");
+  const [soloSaving, setSoloSaving] = useState(false);
+  const soloBusy = useRef(false);
+  const [eventVersion, setEventVersion] = useState(0);
+  const currentUserId = useRef<number | null>(null);
+  currentUserId.current = user?.id ?? null;
+  const eventRequest = useRef(0);
+  const pendingIntent = useRef(false);
+  const membershipRequest = useRef(0);
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [cityId, setCityId] = useState(() => queryNumber("cityId"));
   const [categoryId, setCategoryId] = useState(() => queryNumber("categoryId"));
@@ -131,14 +148,43 @@ export default function App() {
 
   useEffect(() => {
     api.dictionaries().then(dicts => {
-      setCities(dicts.cities); setCategories(dicts.categories); setInterests(dicts.interests);
+      setHiddenCities(new Set(dicts.cities.filter(item => technicalFixture(item.name, item.slug)).map(item => item.id)));
+      setHiddenCategories(new Set(dicts.categories.filter(item => technicalFixture(item.name, item.slug)).map(item => item.id)));
+      setCities(publicDictionary(dicts.cities)); setCategories(publicDictionary(dicts.categories)); setInterests(publicDictionary(dicts.interests));
     }).catch(handleError);
     // A catalogue failure must not prevent restoring the user's session.
     api.getCurrentUser().then(async (currentUser) => {
       setUser(currentUser);
-      setJoinedCompanyIds((await collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies())).items.map((company) => company.id));
     }).catch(() => null).finally(() => setAuthLoading(false));
   }, []);
+
+  const refreshParticipation = async (id = user?.id) => {
+    if (!id) return;
+    const request = ++membershipRequest.current;
+    const [mine, memberships] = await Promise.all([
+      collectPages(options => backendMode ? backendApi.listMyEvents(options) : api.listMyEvents()),
+      collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()),
+    ]);
+    if (currentUserId.current !== id || request !== membershipRequest.current) return;
+    setJoinedCompanyIds(memberships.items.map(company => company.id));
+    setSoloIds(soloEventIds(mine.items, memberships.items));
+    setMembershipError("");
+  };
+  useEffect(() => {
+    setSoloIds(null); setJoinedCompanyIds([]); setMembershipError("");
+    if (user) void refreshParticipation(user.id).catch(error => {
+      if (currentUserId.current === user.id) setMembershipError(error instanceof Error ? error.message : "Не удалось проверить участие");
+    });
+  }, [user?.id]);
+
+  const refreshEvent = async (id: number) => {
+    const fresh = await api.getEvent(id);
+    setEvents(previous => mergeEvent(previous, fresh));
+    setSelected(previous => previous?.id === fresh.id ? fresh : previous);
+    setEventVersion(version => version + 1);
+    await refreshParticipation();
+    return fresh;
+  };
 
   useEffect(() => {
     let active = true;
@@ -190,14 +236,26 @@ export default function App() {
   }, [search, cityId, categoryId, sort]);
 
   const openEvent = async (event: Event) => {
+    const request = ++eventRequest.current;
     setSelected(event); setCompanies([]);
-    try { setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(event.id, options) : api.listEventCompanies(event.id))).items); } catch (error) { handleError(error); }
+    try {
+      const [fresh, list] = await Promise.all([api.getEvent(event.id), collectPages(options => backendMode ? backendApi.listEventCompanies(event.id, options) : api.listEventCompanies(event.id))]);
+      if (request !== eventRequest.current) return;
+      setCompanies(list.items);
+      setSelected(previous => previous?.id === event.id ? fresh : previous);
+      setEvents(previous => mergeEvent(previous, fresh));
+    } catch (error) { if (request === eventRequest.current) handleError(error); }
   };
   const completeAuthentication = (nextUser: User) => {
     setUser(nextUser);
     setAuthOpen(false);
     setRegisterOpen(false);
+    if (nextUser.isProfileComplete && pendingIntent.current) {
+      flash({ kind: "success", text: "Вы вошли. Теперь можно продолжить выбранное действие." });
+      pendingIntent.current = false;
+    }
     if (!nextUser.isProfileComplete) {
+      pendingIntent.current = false;
       // Registration continues on a page, not underneath the guest's event popup.
       setSelected(null);
       setCompanyOpen(false);
@@ -207,10 +265,34 @@ export default function App() {
       setView("profile");
     }
   };
+  useEffect(() => {
+    if (!user?.isProfileComplete) return;
+    let active = true;
+    let id = 0;
+    try {
+      id = Number(sessionStorage.getItem("poydem_auth_event"));
+    } catch { /* Optional OAuth context. */ }
+    if (Number.isInteger(id) && id > 0) void api.getEvent(id).then(event => {
+      if (active) {
+        try { sessionStorage.removeItem("poydem_auth_event"); } catch { /* Optional context cleanup. */ }
+        void openEvent(event); flash({ kind: "success", text: "Вы вошли. Продолжите действие в карточке события." });
+      }
+    }).catch(error => { if (active) handleError(error); });
+    return () => { active = false; };
+  }, [user?.id, user?.isProfileComplete]);
   const authenticate = async (provider: "google" | "telegram" | "vk") => {
+    if (backendMode) {
+      try {
+        sessionStorage.setItem("poydem_after_oauth", `${window.location.pathname}${window.location.search}${window.location.hash}`);
+        if (selected) sessionStorage.setItem("poydem_auth_event", String(selected.id));
+      } catch { /* Authentication still works without browser storage. */ }
+    }
     try { const result = await api.login(provider); completeAuthentication(result.user); flash({ kind: "success", text: "Вы вошли в демо-аккаунт" }); } catch (error) { handleError(error); }
   };
   const register = async (provider: "google" | "telegram" | "vk") => {
+    if (backendMode) {
+      try { sessionStorage.setItem("poydem_after_oauth", `${window.location.pathname}${window.location.search}${window.location.hash}`); } catch { /* Optional navigation memory. */ }
+    }
     try { const result = await api.register(provider); completeAuthentication(result.user); setView("profile"); } catch (error) { handleError(error); throw error; }
   };
   const registerWithPassword = async (username: string, password: string) => {
@@ -223,36 +305,53 @@ export default function App() {
       window.location.assign("/admin#/");
       return;
     }
-    completeAuthentication(result.user); setView(result.user.isProfileComplete ? "home" : "profile");
+    completeAuthentication(result.user);
   };
-  const requireAuth = (action: () => void) => user ? action() : setAuthOpen(true);
+  const requireAuth = (action: () => void) => {
+    if (user) { action(); return; }
+    pendingIntent.current = true;
+    setAuthOpen(true);
+  };
+  const toggleSolo = () => requireAuth(async () => {
+    if (!selected || soloBusy.current || soloIds === null) return;
+    soloBusy.current = true; setSoloSaving(true);
+    const id = selected.id, wasSolo = soloIds.includes(id);
+    try {
+      if (wasSolo) await api.cancelEventSolo(id); else await api.joinEventSolo(id);
+      setSoloIds(previous => wasSolo ? (previous ?? []).filter(item => item !== id) : [...new Set([...(previous ?? []), id])]);
+      flash({ kind: "success", text: wasSolo ? "Самостоятельное участие отменено" : "Вы идёте самостоятельно" });
+      await refreshEvent(id);
+    } catch (error) { handleError(error); }
+    finally { soloBusy.current = false; setSoloSaving(false); }
+  });
   const refreshCompanies = async () => selected && setCompanies((await collectPages(options => backendMode ? backendApi.listEventCompanies(selected.id, options) : api.listEventCompanies(selected.id))).items);
   const handleCompanyAction = (company: Company) => requireAuth(async () => {
     try {
       if (company.joinType === "open") { await api.joinOpenCompany(company.id); setJoinedCompanyIds((ids) => [...new Set([...ids, company.id])]); flash({ kind: "success", text: `Вы присоединились к «${company.name}»` }); }
       else { await api.createCompanyApplication(company.id, "Буду рад присоединиться к вам!"); flash({ kind: "success", text: "Заявка отправлена организатору" }); }
       await refreshCompanies();
+      if (selected) await refreshEvent(selected.id);
     } catch (error) { handleError(error); }
   });
 
   return <div className="app-shell min-h-screen bg-[#f5f7f2] text-[#102318]">
-    <div className="app-background" inert={modalOpen ? true : undefined} aria-hidden={modalOpen || undefined}>
+    <div className="app-background" inert={modalOpen ? true : undefined}>
     <Header user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
     <PageErrorBoundary key={`${view}:${user?.id ?? "guest"}`}>
     {!user && (view === "chats" || view === "profile") && <main className="mx-auto max-w-2xl px-5 py-16"><h1 className="text-2xl font-extrabold">{authLoading ? "Загружаем ваш аккаунт…" : "Войдите в аккаунт"}</h1>{!authLoading && <><p className="mt-3 text-[#52705a]">Этот раздел доступен после входа.</p><button onClick={() => setAuthOpen(true)} className="cta-lime mt-6 rounded-xl px-5 py-3 font-bold">Войти</button></>}</main>}
     {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
     {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} paused={modalOpen} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
     {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
-    {!onboardingRequired && view === "profile" && user ? <UserDashboard user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
+    {!onboardingRequired && view === "profile" && user ? <UserDashboard revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onCreate={() => requireAuth(() => setEventCreateOpen(true))} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
-    {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent}/>}
+    {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent} onBrowseMap={() => { setNearbyOpen(false); setView("map"); }} isPublicEvent={isPublicEvent}/>}
     </PageErrorBoundary>
     </div>
-    {selected && !secondaryModalOpen && <EventDrawer event={selected} city={cities.find((item) => item.id === selected.cityId)} category={categories.find((item) => item.id === selected.categoryId)} companies={companies} joinedCompanyIds={joinedCompanyIds} onClose={() => setSelected(null)} onJoin={handleCompanyAction} onSolo={() => requireAuth(async () => { try { await mockApi.joinEventSolo(selected.id); flash({ kind: "success", text: "Событие добавлено в ваши планы" }); } catch (error) { handleError(error); } })} onCreate={() => requireAuth(() => setCompanyOpen(true))} />}
+    {selected && !secondaryModalOpen && <EventDrawer event={selected} city={cities.find((item) => item.id === selected.cityId)} category={categories.find((item) => item.id === selected.categoryId)} companies={companies} joinedCompanyIds={joinedCompanyIds} onClose={() => setSelected(null)} onJoin={handleCompanyAction} soloJoined={soloIds?.includes(selected.id) ?? false} soloLoading={Boolean(user && soloIds === null)} soloSaving={soloSaving} membershipError={membershipError} onReloadParticipation={() => { void refreshParticipation().catch(handleError); }} onSolo={toggleSolo} onCreate={() => requireAuth(() => setCompanyOpen(true))} />}
     {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onRegister={() => { setAuthOpen(false); setRegisterOpen(true); }} onLogin={authenticate} onAdminLogin={authenticateAdmin} />}
     {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} onLogin={() => { setRegisterOpen(false); setAuthOpen(true); }} onRegister={register} onPasswordRegister={registerWithPassword} />}
-    {companyOpen && selected && <CreateCompanyModal event={selected} onClose={() => setCompanyOpen(false)} onCreated={async () => { setCompanyOpen(false); await refreshCompanies(); setJoinedCompanyIds((await collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies())).items.map((company) => company.id)); flash({ kind: "success", text: "Компания создана" }); }} />}
+    {companyOpen && selected && <CreateCompanyModal event={selected} onClose={() => setCompanyOpen(false)} onCreated={async () => { try { await Promise.all([refreshCompanies(), refreshEvent(selected.id)]); setCompanyOpen(false); flash({ kind: "success", text: "Компания создана" }); } catch { setCompanyOpen(false); flash({ kind: "error", text: "Компания создана, но данные не обновились. Откройте событие ещё раз." }); } }} />}
     {eventCreateOpen && <EventCreateModal cities={cities} categories={categories} onClose={() => setEventCreateOpen(false)} onCreated={(event) => { setEventCreateOpen(false); flash({ kind: "success", text: `«${event.title}» отправлено на модерацию` }); setView("profile"); }} />}
     {notice && <div role="status" className={`fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-2xl px-5 py-3 text-sm font-semibold shadow-2xl ${notice.kind === "success" ? "bg-[#102318] text-white" : "bg-[#9e3128] text-white"}`}><Icon name={notice.kind === "success" ? "check" : "close"} size={18}/>{notice.text}</div>}
   </div>;
@@ -290,16 +389,20 @@ function HomeHero({ onNavigate, paused }: { onNavigate: (view: View) => void; pa
 
 function EventsCatalog({ events, cities, categories, cityId, categoryId, search, sort, setCityId, setCategoryId, setSearch, setSort, loading, onSelect }: { events: Event[]; cities: DictionaryItem[]; categories: DictionaryItem[]; cityId: number; categoryId: number; search: string; sort: string; setCityId: (id: number) => void; setCategoryId: (id: number) => void; setSearch: (value: string) => void; setSort: (value: string) => void; loading: boolean; onSelect: (event: Event) => void }) {
   const reset = () => { setCityId(0); setCategoryId(0); setSearch(""); };
-  return <main><section id="events" className="mx-auto max-w-[1240px] px-5 pb-24 pt-10 lg:px-8"><div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><p className="mb-2 text-xs font-bold uppercase tracking-[.2em] text-[#69916f]">Афиша</p><h2 className="text-3xl font-extrabold tracking-[-.04em] md:text-4xl">Выберите, куда пойдём</h2></div><div className="flex flex-wrap items-center gap-3"><div className="flex items-center gap-2 text-sm text-[#58705e]"><span>Сначала</span><SiteSelect value={sort} onChange={setSort} ariaLabel="Сортировка событий" className="w-40" options={[{ value: "date", label: "Ближайшие" }, { value: "popular", label: "Популярные" }]}/></div></div></div><div className="grid gap-8 lg:grid-cols-[250px_1fr]"><FilterPanel cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId}/><div><div className="mb-5 flex items-center justify-between"><p className="text-sm text-[#6d7e70]">Найдено: <b className="text-[#102318]">{events.length}</b></p>{(cityId || categoryId || search) ? <button onClick={reset} className="text-sm font-semibold text-[#416949]">Сбросить фильтры</button> : null}</div>{loading ? <EventSkeletons/> : events.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{events.map((event) => <EventCard key={event.id} event={event} city={cities.find((item) => item.id === event.cityId)} category={categories.find((item) => item.id === event.categoryId)} onClick={() => onSelect(event)}/>)}</div> : <EmptyState onReset={reset}/>}</div></div></section></main>;
+  return <main><section id="events" className="mx-auto max-w-[1240px] px-5 pb-24 pt-10 lg:px-8"><div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><p className="mb-2 text-xs font-bold uppercase tracking-[.2em] text-[#69916f]">Афиша</p><h2 className="text-3xl font-extrabold tracking-[-.04em] md:text-4xl">Выберите, куда пойдём</h2></div><div className="flex flex-wrap items-center gap-3"><div className="flex items-center gap-2 text-sm text-[#58705e]"><span>Сначала</span><SiteSelect value={sort} onChange={setSort} ariaLabel="Сортировка событий" className="w-40" options={[{ value: "date", label: "Ближайшие" }, { value: "popular", label: "Популярные" }]}/></div></div></div><div className="grid gap-8 lg:grid-cols-[250px_1fr]"><CatalogFilters cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} onSearch={setSearch} onCity={setCityId} onCategory={setCategoryId} onReset={reset}/><div><div className="mb-5 flex items-center justify-between"><p className="text-sm text-[#6d7e70]">Найдено: <b className="text-[#102318]">{events.length}</b></p>{(cityId || categoryId || search) ? <button onClick={reset} className="text-sm font-semibold text-[#416949]">Сбросить фильтры</button> : null}</div>{loading ? <EventSkeletons/> : events.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{events.map((event) => <EventCard key={event.id} event={event} city={cities.find((item) => item.id === event.cityId)} category={categories.find((item) => item.id === event.categoryId)} onClick={() => onSelect(event)}/>)}</div> : <EmptyState onReset={reset}/>}</div></div></section></main>;
 }
 
 function MapPage({ search, setSearch, events, cities, categories, cityId, categoryId, setCityId, setCategoryId, loading, onSelect, onCreate, onReset }: { search: string; setSearch: (value: string) => void; events: Event[]; cities: DictionaryItem[]; categories: DictionaryItem[]; cityId: number; categoryId: number; setCityId: (id: number) => void; setCategoryId: (id: number) => void; loading: boolean; onSelect: (event: Event) => void; onCreate: () => void; onReset: () => void }) {
   const locatedCount = events.filter(event => eventPosition(event) !== null).length;
   const filtered = Boolean(cityId || categoryId || search);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = Number(Boolean(cityId)) + Number(Boolean(categoryId)) + Number(Boolean(search.trim()));
   return <main className="map-page atlas-page mx-auto max-w-[1240px] px-5 pb-24 pt-10 lg:px-8">
     <header className="atlas-heading"><div><p className="atlas-eyebrow">Город — это повод встретиться</p><h1>Ваши планы на карте<span>.</span></h1><p>Найдите интересное место. А вместе с ним — свою компанию.</p></div><span className="atlas-heading-icon" aria-hidden="true"><Icon name="pin" size={28}/></span></header>
     <div className="atlas-layout">
       <aside className="atlas-filters">
+        <button type="button" className="atlas-mobile-filter-toggle" aria-expanded={filtersOpen} aria-controls="atlas-filter-controls" onClick={() => setFiltersOpen(open => !open)}><Icon name="sliders" size={18}/>Фильтры{activeFilters > 0 && <b>{activeFilters}</b>}<span>{filtersOpen ? "Свернуть" : "Показать"}</span></button>
+        <div id="atlas-filter-controls" className="atlas-filter-controls" hidden={!filtersOpen}>
         <div className="atlas-filter-heading"><Icon name="sliders" size={18}/><h2>Ваш маршрут</h2></div>
         <label className="atlas-label" htmlFor="atlas-search">Что ищем?</label>
         <div className="atlas-search"><Icon name="search" size={18}/><input id="atlas-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Событие или площадка"/></div>
@@ -308,10 +411,11 @@ function MapPage({ search, setSearch, events, cities, categories, cityId, catego
         <fieldset className="atlas-categories"><legend className="atlas-label">По настроению</legend><div><button aria-pressed={!categoryId} onClick={() => setCategoryId(0)}>Все события</button>{categories.map(category => <button key={category.id} aria-pressed={categoryId === category.id} onClick={() => setCategoryId(categoryId === category.id ? 0 : category.id)}>{category.name}</button>)}</div></fieldset>
         {filtered && <button className="atlas-reset" onClick={onReset}>Сбросить фильтры <Icon name="close" size={14}/></button>}
         <p className="atlas-filter-hint">Нажмите на метку с обложкой, чтобы узнать о событии и найти компанию.</p>
+        </div>
       </aside>
       <div className="atlas-results">
         <section className="atlas-map-frame" aria-label="События на карте">
-          <div className="atlas-map-toolbar"><span><i aria-hidden="true"/>Карта событий</span><b>{loading ? "Загружаем…" : `${locatedCount} событий`}</b></div>
+          <div className="atlas-map-toolbar"><span><i aria-hidden="true"/>Карта событий</span><b>{loading ? "Загружаем…" : countLabel(locatedCount, "events")}</b></div>
           {loading ? <div role="status" className="atlas-map-loading">Загружаем карту событий…</div> : <EventMap events={events} onSelect={onSelect}/>}
           <div className="atlas-map-caption"><span>Точки на карте — ваши будущие впечатления</span><button type="button" onClick={onCreate} className="event-create-trigger"><Icon name="plus" size={18}/><span>Создать событие</span></button></div>
         </section>
@@ -324,10 +428,10 @@ function MapPage({ search, setSearch, events, cities, categories, cityId, catego
 
 function MapRecommendations({ events, cities, categories, onSelect }: { events: Event[]; cities: DictionaryItem[]; categories: DictionaryItem[]; onSelect: (event: Event) => void }) {
   if (!events.length) return null;
-  return <section className="atlas-picks"><div className="atlas-picks-heading"><div><p className="atlas-eyebrow">От точки к впечатлению</p><h2>В вашей подборке</h2></div><span>{events.length} событий</span></div>
+  return <section className="atlas-picks"><div className="atlas-picks-heading"><div><p className="atlas-eyebrow">От точки к впечатлению</p><h2>В вашей подборке</h2></div><span>{countLabel(events.length, "events")}</span></div>
     <div className="atlas-cards">{events.map(event => <button key={event.id} onClick={() => onSelect(event)} className="atlas-card">
       <div className="atlas-card-cover">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <span className="atlas-cover-placeholder"><Icon name="pin" size={32}/></span>}<span className="atlas-card-category">{categories.find(category => category.id === event.categoryId)?.name ?? "Событие"}</span></div>
-      <div className="atlas-card-body"><time dateTime={event.startsAt}>{dateLabel(event.startsAt)}</time><h3>{event.title}</h3><p className="atlas-card-place"><Icon name="pin" size={15}/><span>{[cities.find(city => city.id === event.cityId)?.name, event.locationName].filter(Boolean).join(" · ")}</span></p><div className="atlas-card-bottom"><span><Icon name="users" size={16}/>{event.companiesCount} компаний</span><span className="atlas-card-arrow"><Icon name="arrow" size={18}/></span></div></div>
+      <div className="atlas-card-body"><time dateTime={event.startsAt}>{dateLabel(event.startsAt)}</time><h3>{event.title}</h3><p className="atlas-card-place"><Icon name="pin" size={15}/><span>{[cities.find(city => city.id === event.cityId)?.name, event.locationName].filter(Boolean).join(" · ")}</span></p><div className="atlas-card-bottom"><span><Icon name="users" size={16}/>{countLabel(event.companiesCount, "companies")}</span><span className="atlas-card-arrow"><Icon name="arrow" size={18}/></span></div></div>
     </button>)}</div>
   </section>;
 }
@@ -337,29 +441,18 @@ function FilterPanel({ cities, categories, cityId, categoryId, setCityId, setCat
 }
 
 function EventCard({ event, city, category, onClick }: { event: Event; city?: DictionaryItem; category?: DictionaryItem; onClick: () => void }) {
-  return <article className="event-card group relative overflow-hidden"><button onClick={onClick} aria-label={`Открыть событие: ${event.title}`} className="block w-full text-left"><div className="event-card-image relative overflow-hidden"><img src={event.imageUrl ?? ""} alt={`Обложка события «${event.title}»`} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.07]"/><div className="event-card-wash absolute inset-0"/><span className="event-card-category absolute left-4 top-4 rounded-full px-3 py-1.5 text-xs font-extrabold">{category?.name ?? "Событие"}</span><div className="event-card-date absolute bottom-0 left-4 translate-y-1/2 rounded-2xl px-3 py-2"><strong className="block text-sm leading-none">{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(event.startsAt))}</strong><span className="mt-1 block text-[10px] font-bold uppercase tracking-[.1em]">{new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(new Date(event.startsAt))}</span></div></div><div className="event-card-body px-5 pb-5 pt-9"><div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[.1em] text-[#738879]"><span className="truncate">{city?.name ?? "Город"}</span><span className="shrink-0 text-[#45654c]">{event.participantsCount} идут</span></div><h3 className="event-card-title text-[1.24rem] font-extrabold leading-[1.15] tracking-[-.04em] text-[#102318]">{event.title}</h3><p className="event-card-description mt-2 text-sm leading-6 text-[#617365]">{event.description || "Собираемся вместе, чтобы провести время и найти свою компанию."}</p><div className="mt-4 flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-xs leading-5 text-[#617365]"><Icon name="pin" size={15}/><span className="truncate">{event.locationName}</span></span><span className="event-card-arrow grid h-10 w-10 shrink-0 place-items-center rounded-2xl"><Icon name="arrow" size={18}/></span></div><div className="event-card-footer mt-4 flex items-center gap-2 border-t pt-4 text-xs font-semibold text-[#46634c]"><Icon name="users" size={16}/><span>{event.companiesCount ? `${event.companiesCount} компаний собираются` : "Создайте первую компанию"}</span></div></div></button></article>;
+  return <article className="event-card group relative overflow-hidden"><button onClick={onClick} aria-label={`Открыть событие: ${event.title}`} className="block w-full text-left"><div className="event-card-image relative overflow-hidden"><img src={event.imageUrl ?? ""} alt={`Обложка события «${event.title}»`} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.07]"/><div className="event-card-wash absolute inset-0"/><span className="event-card-category absolute left-4 top-4 rounded-full px-3 py-1.5 text-xs font-extrabold">{category?.name ?? "Событие"}</span><div className="event-card-date absolute bottom-0 left-4 translate-y-1/2 rounded-2xl px-3 py-2"><strong className="block text-sm leading-none">{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(event.startsAt))}</strong><span className="mt-1 block text-[10px] font-bold uppercase tracking-[.1em]">{new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(new Date(event.startsAt))}</span></div></div><div className="event-card-body px-5 pb-5 pt-9"><div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[.1em] text-[#738879]"><span className="truncate">{city?.name ?? "Город"}</span><span className="shrink-0 text-[#45654c]">{countLabel(event.participantsCount, "members")}</span></div><h3 className="event-card-title text-[1.24rem] font-extrabold leading-[1.15] tracking-[-.04em] text-[#102318]">{event.title}</h3><p className="event-card-description mt-2 text-sm leading-6 text-[#617365]">{event.description || "Собираемся вместе, чтобы провести время и найти свою компанию."}</p><div className="mt-4 flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-xs leading-5 text-[#617365]"><Icon name="pin" size={15}/><span className="truncate">{event.locationName}</span></span><span className="event-card-arrow grid h-10 w-10 shrink-0 place-items-center rounded-2xl"><Icon name="arrow" size={18}/></span></div><div className="event-card-footer mt-4 flex items-center gap-2 border-t pt-4 text-xs font-semibold text-[#46634c]"><Icon name="users" size={16}/><span>{event.companiesCount ? countLabel(event.companiesCount, "companies") : "Создайте первую компанию"}</span></div></div></button></article>;
 }
 
-function EventDrawer({ event, city, category, companies: allCompanies, joinedCompanyIds, onClose: onDismiss, onJoin, onSolo, onCreate }: { event: Event; city?: DictionaryItem; category?: DictionaryItem; companies: Company[]; joinedCompanyIds: number[]; onClose: () => void; onJoin: (company: Company) => void; onSolo: () => void; onCreate: () => void }) {
+function EventDrawer({ event, city, category, companies: allCompanies, joinedCompanyIds, onClose: onDismiss, onJoin, onSolo, onCreate, soloJoined, soloLoading, soloSaving, membershipError, onReloadParticipation }: { soloJoined: boolean; soloLoading: boolean; soloSaving: boolean; membershipError: string; onReloadParticipation: () => void; event: Event; city?: DictionaryItem; category?: DictionaryItem; companies: Company[]; joinedCompanyIds: number[]; onClose: () => void; onJoin: (company: Company) => void; onSolo: () => void; onCreate: () => void }) {
   const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
   const companies = allCompanies.filter((company) => company.status === "active" && company.membersCount < company.maxMembers);
   const closeButton = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    closeButton.current?.focus({ preventScroll: true });
-    const closeOnEscape = (keyboardEvent: KeyboardEvent) => {
-      if (keyboardEvent.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-      previousFocus?.focus({ preventScroll: true });
-    };
-  }, [onClose]);
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalDialog(dialogRef, onClose);
 
   return <div data-closing={closing || undefined} className="event-modal-overlay" onMouseDown={(mouseEvent) => mouseEvent.target === mouseEvent.currentTarget && onClose()}>
-    <section className="event-modal-panel" role="dialog" aria-modal="true" aria-labelledby={`event-modal-title-${event.id}`}>
+    <section ref={dialogRef} tabIndex={-1} className="event-modal-panel" role="dialog" aria-modal="true" aria-labelledby={`event-modal-title-${event.id}`}>
       <div className="event-modal-cover">
         {event.imageUrl ? <img src={event.imageUrl} alt={`Обложка события «${event.title}»`}/> : <div className="event-modal-cover-placeholder"><Icon name="pin" size={42}/></div>}
         <div className="event-modal-cover-shade"/>
@@ -378,13 +471,13 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
 
         <div className="event-modal-facts">
           <div><span className="event-modal-fact-icon"><Icon name="pin" size={19}/></span><span><small>Место</small><strong>{[city?.name, event.locationName].filter(Boolean).join(" · ")}</strong></span></div>
-          <div><span className="event-modal-fact-icon"><Icon name="users" size={19}/></span><span><small>Уже собираются</small><strong>{event.participantsCount} участников</strong></span></div>
+          <div><span className="event-modal-fact-icon"><Icon name="users" size={19}/></span><span><small>Уже собираются</small><strong>{countLabel(event.participantsCount, "members")}</strong></span></div>
         </div>
 
         {event.description ? <p className="event-modal-description">{event.description}</p> : null}
 
         <div className="event-modal-actions">
-          <button type="button" onClick={onSolo} className="event-modal-action-primary"><Icon name="check" size={19}/>Пойду самостоятельно</button>
+          <div className="event-solo-action">{soloJoined && <p role="status">Вы идёте самостоятельно</p>}<button type="button" disabled={soloSaving || (soloLoading && !membershipError)} onClick={membershipError ? onReloadParticipation : onSolo} className="event-modal-action-primary"><Icon name="check" size={19}/>{soloSaving ? "Сохраняем…" : membershipError ? "Проверить участие ещё раз" : soloLoading ? "Проверяем участие…" : soloJoined ? "Отменить участие" : "Пойду самостоятельно"}</button></div>
           <button type="button" onClick={onCreate} className="event-modal-action-secondary"><Icon name="plus" size={19}/>Создать компанию</button>
         </div>
 
@@ -428,6 +521,8 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
 
 function AuthModal({ onClose: onDismiss, onRegister, onLogin, onAdminLogin }: { onClose: () => void; onRegister: () => void; onLogin: (provider: "google" | "telegram" | "vk") => void; onAdminLogin: (username: string, password: string) => Promise<void> }) {
   const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalDialog(dialogRef, onClose);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -438,7 +533,7 @@ function AuthModal({ onClose: onDismiss, onRegister, onLogin, onAdminLogin }: { 
     try { await onAdminLogin(username, password); }
     catch (error) { setAdminError(error instanceof Error ? error.message : "Не удалось войти"); setAdminLoading(false); }
   };
-  return <div data-closing={closing || undefined} className="auth-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="auth-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  return <div data-closing={closing || undefined} className="auth-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} tabIndex={-1} className="auth-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <button type="button" onClick={onClose} aria-label="Закрыть окно входа" className="auth-close"><Icon name="close" size={19}/></button>
     <BrandLogo/>
     <header className="auth-heading"><p>Ваши планы уже рядом</p><h2 id="login-title">С возвращением</h2><span>Войдите, чтобы продолжить искать события и людей, с которыми хочется пойти.</span></header>
@@ -456,14 +551,18 @@ function AuthModal({ onClose: onDismiss, onRegister, onLogin, onAdminLogin }: { 
 
 function PolicyModal({ onClose: onDismiss }: { onClose: () => void }) {
   const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
-  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/60 p-5 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><article className="max-h-[82vh] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-start justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#6d8b73]">«Пойдём»</p><h2 className="mt-2 text-2xl font-black tracking-[-.04em]">Правила и политика безопасного участия</h2></div><button type="button" onClick={onClose} aria-label="Закрыть правила" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff4ec] text-[#526258]"><Icon name="close"/></button></div><div className="mt-6 space-y-5 text-sm leading-6 text-[#526258]"><section><h3 className="font-extrabold text-[#102318]">1. О платформе</h3><p className="mt-1">«Пойдём» помогает пользователям находить мероприятия и объединяться в компании. Мы не выступаем организатором мероприятий, перевозчиком, охраной, посредником при оплате или представителем участников.</p></section><section><h3 className="font-extrabold text-[#102318]">2. Самостоятельное решение</h3><p className="mt-1">Каждый пользователь самостоятельно выбирает событие, оценивает место, программу, организатора и участников, а также принимает решение об участии. До встречи рекомендуем уточнить детали у организатора и не передавать незнакомым людям личные данные, деньги или документы.</p></section><section><h3 className="font-extrabold text-[#102318]">3. Ответственность на мероприятии</h3><p className="mt-1">За содержание, проведение, изменения программы и безопасность конкретного мероприятия отвечает его организатор. За собственные действия и соблюдение закона на мероприятии отвечает каждый участник. Платформа не может гарантировать поведение, намерения, достоверность информации или совместимость других пользователей и не несёт ответственности за события и отношения, возникающие между участниками вне функциональности платформы, в пределах, допустимых применимым законодательством.</p></section><section><h3 className="font-extrabold text-[#102318]">4. Безопасность</h3><p className="mt-1">Если встреча вызывает сомнения, не продолжайте общение и сообщите о пользователе или событии через жалобу. При непосредственной угрозе жизни, здоровью или имуществу обращайтесь в экстренные службы, а затем сообщите нам — мы рассмотрим жалобу и можем ограничить доступ нарушителю.</p></section><section><h3 className="font-extrabold text-[#102318]">5. Уважительное общение</h3><p className="mt-1">Запрещены угрозы, преследование, дискриминация, мошенничество, публикация чужих персональных данных и размещение незаконного контента. Мы вправе модерировать или блокировать материалы и аккаунты при нарушении правил.</p></section></div><button type="button" onClick={onClose} className="mt-7 w-full rounded-xl bg-[#102318] py-3 text-sm font-extrabold text-white">Понятно</button></article></div>;
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalDialog(dialogRef, onClose);
+  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/60 p-5 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><article ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="policy-heading" tabIndex={-1} className="max-h-[82vh] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-start justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#6d8b73]">«Пойдём»</p><h2 id="policy-heading" className="mt-2 text-2xl font-black tracking-[-.04em]">Правила и политика безопасного участия</h2></div><button type="button" onClick={onClose} aria-label="Закрыть правила" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff4ec] text-[#526258]"><Icon name="close"/></button></div><div className="mt-6 space-y-5 text-sm leading-6 text-[#526258]"><section><h3 className="font-extrabold text-[#102318]">1. О платформе</h3><p className="mt-1">«Пойдём» помогает пользователям находить мероприятия и объединяться в компании. Мы не выступаем организатором мероприятий, перевозчиком, охраной, посредником при оплате или представителем участников.</p></section><section><h3 className="font-extrabold text-[#102318]">2. Самостоятельное решение</h3><p className="mt-1">Каждый пользователь самостоятельно выбирает событие, оценивает место, программу, организатора и участников, а также принимает решение об участии. До встречи рекомендуем уточнить детали у организатора и не передавать незнакомым людям личные данные, деньги или документы.</p></section><section><h3 className="font-extrabold text-[#102318]">3. Ответственность на мероприятии</h3><p className="mt-1">За содержание, проведение, изменения программы и безопасность конкретного мероприятия отвечает его организатор. За собственные действия и соблюдение закона на мероприятии отвечает каждый участник. Платформа не может гарантировать поведение, намерения, достоверность информации или совместимость других пользователей и не несёт ответственности за события и отношения, возникающие между участниками вне функциональности платформы, в пределах, допустимых применимым законодательством.</p></section><section><h3 className="font-extrabold text-[#102318]">4. Безопасность</h3><p className="mt-1">Если встреча вызывает сомнения, не продолжайте общение и сообщите о пользователе или событии через жалобу. При непосредственной угрозе жизни, здоровью или имуществу обращайтесь в экстренные службы, а затем сообщите нам — мы рассмотрим жалобу и можем ограничить доступ нарушителю.</p></section><section><h3 className="font-extrabold text-[#102318]">5. Уважительное общение</h3><p className="mt-1">Запрещены угрозы, преследование, дискриминация, мошенничество, публикация чужих персональных данных и размещение незаконного контента. Мы вправе модерировать или блокировать материалы и аккаунты при нарушении правил.</p></section></div><button type="button" onClick={onClose} className="mt-7 w-full rounded-xl bg-[#102318] py-3 text-sm font-extrabold text-white">Понятно</button></article></div>;
 }
 
-function CreateCompanyModal({ event, onClose: onDismiss, onCreated }: { event: Event; onClose: () => void; onCreated: () => void }) {
-  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss);
+function CreateCompanyModal({ event, onClose: onDismiss, onCreated }: { event: Event; onClose: () => void; onCreated: () => Promise<void> }) {
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [maxMembers, setMaxMembers] = useState(5); const [joinType, setJoinType] = useState<"open" | "request">("open"); const [minAge, setMinAge] = useState(""); const [maxAge, setMaxAge] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  const submit = async (e: FormEvent) => { e.preventDefault(); const min = minAge ? Number(minAge) : null; const max = maxAge ? Number(maxAge) : null; if ((min !== null && (min < 14 || min > 100)) || (max !== null && (max < 14 || max > 100)) || (min !== null && max !== null && min > max)) { setError("Возраст указывается от 14 до 100 лет; нижняя граница не может быть выше верхней."); return; } setSaving(true); try { await api.createCompany(event.id, { name, description: description || null, maxMembers, joinType, minAge: min, maxAge: max }); onCreated(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось создать компанию"); } finally { setSaving(false); } };
-  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/55 p-5 backdrop-blur-sm"><form onSubmit={submit} className="relative w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button type="button" onClick={onClose} className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><p className="pr-8 text-xs font-bold uppercase tracking-wider text-[#78907d]">{event.title}</p><h2 className="mt-2 text-2xl font-black">Создать компанию</h2><div className="mt-6 space-y-4"><label className="block text-sm font-semibold">Название<input autoFocus={!window.matchMedia("(pointer: coarse)").matches} value={name} onChange={(e) => setName(e.target.value)} required maxLength={150} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="block text-sm font-semibold">Описание<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Участников<input type="number" min={2} max={100} value={maxMembers} onChange={(e) => setMaxMembers(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Вступление<SiteSelect value={joinType} onChange={(value) => setJoinType(value as "open" | "request")} className="mt-2 font-normal" options={[{ value: "open", label: "Свободное" }, { value: "request", label: "По заявке" }]}/></label></div><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Возраст от<input type="number" min={14} max={100} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Возраст до<input type="number" min={14} max={100} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label></div></div>{error && <p role="alert" className="mt-4 text-sm text-[#a33a31]">{error}</p>}<button disabled={saving} className="mt-6 w-full rounded-2xl bg-[#bdf238] py-3.5 text-sm font-extrabold">{saving ? "Создаём…" : "Создать компанию"}</button></form></div>;
+  const { closing, dismiss: onClose } = usePopupDismiss(onDismiss, true, { busy: saving, dirty: Boolean(name || description || minAge || maxAge || maxMembers !== 5 || joinType !== "open") });
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useModalDialog(dialogRef, onClose);
+  const submit = async (e: FormEvent) => { e.preventDefault(); const min = minAge ? Number(minAge) : null; const max = maxAge ? Number(maxAge) : null; if ((min !== null && (min < 14 || min > 100)) || (max !== null && (max < 14 || max > 100)) || (min !== null && max !== null && min > max)) { setError("Возраст указывается от 14 до 100 лет; нижняя граница не может быть выше верхней."); return; } setSaving(true); try { await api.createCompany(event.id, { name, description: description || null, maxMembers, joinType, minAge: min, maxAge: max }); await onCreated(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось создать компанию"); } finally { setSaving(false); } };
+  return <div data-closing={closing || undefined} className="fixed inset-0 z-[70] grid place-items-center bg-[#08130d]/55 p-5 backdrop-blur-sm"><form ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="create-company-heading" tabIndex={-1} onSubmit={submit} className="relative w-full max-w-lg rounded-[30px] bg-white p-7 shadow-2xl"><button type="button" onClick={onClose} aria-label="Закрыть создание компании" className="absolute right-5 top-5 text-[#718075]"><Icon name="close"/></button><p className="pr-8 text-xs font-bold uppercase tracking-wider text-[#78907d]">{event.title}</p><h2 id="create-company-heading" className="mt-2 text-2xl font-black">Создать компанию</h2><div className="mt-6 space-y-4"><label className="block text-sm font-semibold">Название<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={150} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="block text-sm font-semibold">Описание<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Участников<input type="number" min={2} max={100} value={maxMembers} onChange={(e) => setMaxMembers(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Вступление<SiteSelect value={joinType} onChange={(value) => setJoinType(value as "open" | "request")} className="mt-2 font-normal" options={[{ value: "open", label: "Свободное" }, { value: "request", label: "По заявке" }]}/></label></div><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Возраст от<input type="number" min={14} max={100} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label><label className="text-sm font-semibold">Возраст до<input type="number" min={14} max={100} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="Без ограничения" className="mt-2 w-full rounded-xl border border-[#dce4da] px-4 py-3 font-normal"/></label></div></div>{error && <p role="alert" className="mt-4 text-sm text-[#a33a31]">{error}</p>}<button disabled={saving} className="mt-6 w-full rounded-2xl bg-[#bdf238] py-3.5 text-sm font-extrabold">{saving ? "Создаём…" : "Создать компанию"}</button></form></div>;
 }
 
 function Profile({ user, cities, onUpdate, onOpenEvent }: { user: User; cities: DictionaryItem[]; onUpdate: (user: User) => void; onOpenEvent: (event: Event) => void }) {
