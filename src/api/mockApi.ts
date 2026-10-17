@@ -1,5 +1,6 @@
 import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
+import { createMockMapEvents } from "./mockMapEvents";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
@@ -38,6 +39,7 @@ const makeEvent = (data: Partial<Event> & Pick<Event, "id" | "title" | "category
   description: null, endsAt: null, address: null, location: null, imageUrl: null, status: "active", moderationReason: null, participantsCount: 0,
   companiesCount: 0, creator: people[1], createdAt: "2026-09-01T12:00:00+03:00", updatedAt: "2026-09-22T12:00:00+03:00", ...data,
 });
+const additionalMapEvents = createMockMapEvents(people[1]);
 const initialEvents: Event[] = [
   makeEvent({ id: 1, title: "Moscow Tech Week 2026", description: "Большая неделя технологий, продуктов и новых знакомств. Лекции, воркшопы и вечерний нетворкинг.", categoryId: 1, cityId: 1, startsAt: "2026-10-18T19:00:00+03:00", endsAt: "2026-10-18T23:00:00+03:00", locationName: "Дизайн-завод", address: "Большая Новодмитровская, 36", location: { latitude: 55.8057, longitude: 37.5869, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&h=700&fit=crop&auto=format", participantsCount: 146, companiesCount: 12 }),
   makeEvent({ id: 2, title: "Пикник «Стереолето»", description: "Музыка под открытым небом, фудкорт и два танцпола. Собираем лёгкую компанию без строгого плана.", categoryId: 2, cityId: 2, startsAt: "2026-10-24T15:00:00+03:00", endsAt: "2026-10-24T23:30:00+03:00", locationName: "Севкабель Порт", address: "Кожевенная линия, 40", location: { latitude: 59.9251, longitude: 30.2414, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=1200&h=700&fit=crop&auto=format", participantsCount: 89, companiesCount: 8, creator: people[2] }),
@@ -45,6 +47,7 @@ const initialEvents: Event[] = [
   makeEvent({ id: 4, title: "Ночной забег по набережной", description: "Пять километров в комфортном темпе. Подходит новичкам — бежим вместе и никого не бросаем.", categoryId: 4, cityId: 1, startsAt: "2026-10-09T21:00:00+03:00", endsAt: "2026-10-09T23:00:00+03:00", locationName: "Лужники", address: "Лужнецкая набережная, 24", location: { latitude: 55.7158, longitude: 37.5534, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=1200&h=700&fit=crop&auto=format", participantsCount: 42, companiesCount: 4 }),
   makeEvent({ id: 5, title: "Большой городской бранч", description: "Дегустации, локальные проекты и разговоры за общим столом.", categoryId: 5, cityId: 4, startsAt: "2026-11-08T12:00:00+03:00", endsAt: "2026-11-08T18:00:00+03:00", locationName: "Дом Печати", address: "проспект Ленина, 49", location: { latitude: 56.8371, longitude: 60.6145, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&h=700&fit=crop&auto=format", participantsCount: 31, companiesCount: 3, creator: people[2] }),
   makeEvent({ id: 6, title: "Премьера и разговор с режиссёром", description: "Смотрим новую российскую драму, после — обсуждение с командой фильма.", categoryId: 6, cityId: 1, startsAt: "2026-11-16T19:30:00+03:00", endsAt: "2026-11-16T23:00:00+03:00", locationName: "Художественный", address: "Арбатская площадь, 14", location: { latitude: 55.7557, longitude: 37.6097, source: "manual" }, imageUrl: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&h=700&fit=crop&auto=format", participantsCount: 68, companiesCount: 7, creator: people[3] }),
+  ...additionalMapEvents,
 ];
 const company = (id: number, eventId: number, name: string, description: string, maxMembers: number, membersCount: number, joinType: "open" | "request", owner: UserShort): Company => ({ id, eventId, name, description, maxMembers, membersCount, joinType, owner, rules: null, minAge: null, maxAge: null, status: "active", createdAt: "2026-09-04T10:00:00+03:00", updatedAt: "2026-09-20T10:00:00+03:00" });
 const initialCompanies = [
@@ -71,12 +74,13 @@ const initialReports: Report[] = [
   { id: 2, targetType: "company", targetId: 4, reason: "Спам", description: "Организатор отправляет одинаковые сообщения участникам.", author: people[2], status: "pending", resolvedBy: null, createdAt: "2026-09-23T10:05:00+03:00", resolvedAt: null },
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
-const fresh = (): State => ({ user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
+const mapEventsSeedVersion = 1;
+const fresh = (): State & { mapEventsSeedVersion: number } => ({ mapEventsSeedVersion, user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
     const saved = localStorage.getItem(storageKey);
     if (!saved) return fresh();
-    const parsed = JSON.parse(saved) as Partial<State>;
+    const parsed = JSON.parse(saved) as Partial<State> & { mapEventsSeedVersion?: number };
     const events = (parsed.events ?? initialEvents).map(event => {
       // Older demo snapshots predate location. Restore only known, unchanged
       // demo venues; keep explicit nulls and user-created events untouched.
@@ -86,7 +90,15 @@ function load(): State {
         && seed.address === event.address);
       return original ? { ...event, location: original.location } : event;
     });
-    return { ...fresh(), ...parsed, events, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports };
+    if ((parsed.mapEventsSeedVersion ?? 0) < mapEventsSeedVersion) {
+      const existingIds = new Set(events.map(event => event.id));
+      events.push(...additionalMapEvents.filter(event => !existingIds.has(event.id)));
+    }
+    const restored = { ...fresh(), ...parsed, mapEventsSeedVersion, events, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports };
+    if ((parsed.mapEventsSeedVersion ?? 0) < mapEventsSeedVersion) {
+      try { localStorage.setItem(storageKey, JSON.stringify(restored)); } catch { /* Preserve loaded user data if storage is full. */ }
+    }
+    return restored;
   } catch { return fresh(); }
 }
 let state = load();
