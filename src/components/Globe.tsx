@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactGlobe, { type GlobeMethods } from "react-globe.gl";
 import { feature } from "topojson-client";
 import countriesTopology from "world-atlas/countries-110m.json";
@@ -14,6 +14,8 @@ const countries = (feature(
 
 export default function Globe({ paused = false }: { paused?: boolean }) {
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 500, height: 500 });
 
@@ -45,8 +47,15 @@ export default function Globe({ paused = false }: { paused?: boolean }) {
     controls.enablePan = false;
     controls.enableRotate = true;
     globe.pointOfView(STARTING_VIEW, 0);
-    if (paused) globe.pauseAnimation();
-  }, [paused]);
+    if (pausedRef.current) globe.pauseAnimation();
+  }, []);
+
+  // With cached assets onGlobeReady can run before react-kapsule exposes its
+  // imperative handle. The parent layout effect runs after that handle attaches,
+  // so the intended camera and locked zoom are applied before the first paint.
+  useLayoutEffect(() => {
+    configureGlobe();
+  }, [configureGlobe]);
 
   return <div ref={containerRef} className="globe-stage relative mx-auto aspect-square w-full max-w-[540px] select-none" aria-label="Интерактивный глобус">
     <div className="globe-aura" aria-hidden="true"/>

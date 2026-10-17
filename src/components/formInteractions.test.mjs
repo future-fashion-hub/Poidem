@@ -30,7 +30,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     useMemo: factory => factory(),
     useCallback: callback => callback,
     useEffect: effect => effects.push(effect),
-    useLayoutEffect: () => {},
+    useLayoutEffect: effect => effects.push(effect),
     lazy: () => function Lazy() {},
   };
   const jsx = (type, props) => ({ type, props });
@@ -70,6 +70,27 @@ function find(node, predicate) {
 }
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+for (const readyBeforeRef of [true, false]) test(`globe always locks zoom and restores its intended scale (readyBeforeRef=${readyBeforeRef})`, () => {
+  const harness = componentHarness("./Globe.tsx", {
+    "react-globe.gl": { __esModule: true, default: "ReactGlobe" },
+    "topojson-client": { feature: () => ({ features: [] }) },
+    "world-atlas/countries-110m.json": { objects: { countries: {} } },
+  });
+  const controls = { enableZoom: true, enablePan: true };
+  let view = { altitude: 2.5 }, paused = false;
+  const globe = { controls: () => controls, pointOfView: next => { view = next; }, pauseAnimation: () => { paused = true; }, resumeAnimation: () => { paused = false; } };
+  const node = getComponent(harness.render({ paused: true }), "ReactGlobe");
+  if (readyBeforeRef) node.props.onGlobeReady();
+  if (typeof node.props.ref === "function") node.props.ref(globe); else node.props.ref.current = globe;
+  harness.runEffectContaining("configureGlobe");
+  if (!readyBeforeRef) node.props.onGlobeReady();
+  assert.equal(controls.enableZoom, false);
+  assert.equal(controls.enablePan, false);
+  assert.equal(controls.enableRotate, true);
+  assert.deepEqual(view, { lat: 51, lng: 46, altitude: 1.65 });
+  assert.equal(paused, true);
+});
 
 for (const soloJoined of [false, true]) test(`solo button has aligned layout and distinct color/icon state (joined=${soloJoined})`, () => {
   const harness = componentHarness("../App.tsx", {
