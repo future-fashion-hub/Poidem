@@ -194,6 +194,50 @@ test("solo participation restores from server and cancellation updates drawer co
   assert.equal(getComponent(tree, "EventDrawer").props.event.participantsCount, 3);
 });
 
+for (const initiallyJoined of [false, true]) for (const refreshFails of [false, true]) {
+  test(`confirmed solo mutation survives stale reads and refresh errors (initiallyJoined=${initiallyJoined}, refreshFails=${refreshFails})`, async () => {
+    let mutations = 0, membershipReads = 0, detailReads = 0, finishMutation;
+    const user = { id: 1, firstName: "Анна", interests: [], isProfileComplete: true };
+    const event = { id: 42, title: "Встреча", participantsCount: 3, companiesCount: 1 };
+    const mutation = () => { mutations++; return new Promise(resolve => { finishMutation = resolve; }); };
+    const harness = componentHarness("../App.tsx", {
+      "./api": { api: {
+        getEvent: async () => { if (++detailReads === 2 && refreshFails) throw new Error("Refresh failed"); return event; },
+        listEventCompanies: async () => ({ items: [] }), loginWithPassword: async () => ({ user }),
+        // A list response may still reflect the state before the successful write.
+        listMyEvents: async () => { membershipReads++; return { items: initiallyJoined ? [{ ...event, relation: "participant" }] : [] }; },
+        listMyCompanies: async () => ({ items: [] }), joinEventSolo: mutation, cancelEventSolo: mutation,
+      } }, "./api/backendApi": { backendMode: false }, "./api/pagination": { collectPages: fetch => fetch({}) },
+    });
+    let tree = harness.render();
+    getComponent(tree, "Header").props.onAuth();
+    tree = harness.render();
+    await getComponent(tree, "AuthModal").props.onAdminLogin("anna", "password");
+    tree = harness.render();
+    harness.runEffectContaining("refreshParticipation"); await flush();
+    tree = harness.render();
+    await getComponent(tree, "./components/EventFeed").props.onOpen(event);
+    tree = harness.render();
+    assert.equal(getComponent(tree, "EventDrawer").props.soloJoined, initiallyJoined);
+    getComponent(tree, "EventDrawer").props.onSolo();
+    getComponent(tree, "EventDrawer").props.onSolo();
+    tree = harness.render();
+    assert.equal(getComponent(tree, "EventDrawer").props.soloSaving, true);
+    assert.equal(mutations, 1, "a repeated click must not submit twice");
+    finishMutation(); await flush();
+    tree = harness.render();
+    assert.equal(getComponent(tree, "EventDrawer").props.soloSaving, false);
+    assert.equal(getComponent(tree, "EventDrawer").props.soloJoined, !initiallyJoined);
+    assert.equal(membershipReads, 1, "do not overwrite a confirmed write with a list read");
+    // Closing and reopening the same event preserves the confirmed button state.
+    getComponent(tree, "EventDrawer").props.onClose();
+    tree = harness.render();
+    await getComponent(tree, "./components/EventFeed").props.onOpen(event);
+    tree = harness.render();
+    assert.equal(getComponent(tree, "EventDrawer").props.soloJoined, !initiallyJoined);
+  });
+}
+
 test("replay restores an all-saved feed without losing guest favorites, including skip and undo", async () => {
   const event = { id: 42, title: "Кофе и настолки", startsAt: "2026-11-01T12:00:00+03:00", status: "active", participantsCount: 1, companiesCount: 1 };
   const harness = componentHarness("./EventFeed.tsx", { "../api": { backendMode: false, api: {} } }, {

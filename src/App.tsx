@@ -177,12 +177,12 @@ export default function App() {
     });
   }, [user?.id]);
 
-  const refreshEvent = async (id: number) => {
+  const refreshEvent = async (id: number, { refreshMembership = true }: { refreshMembership?: boolean } = {}) => {
     const fresh = await api.getEvent(id);
     setEvents(previous => mergeEvent(previous, fresh));
     setSelected(previous => previous?.id === fresh.id ? fresh : previous);
     setEventVersion(version => version + 1);
-    await refreshParticipation();
+    if (refreshMembership) await refreshParticipation();
     return fresh;
   };
 
@@ -315,12 +315,21 @@ export default function App() {
   const toggleSolo = () => requireAuth(async () => {
     if (!selected || soloBusy.current || soloIds === null) return;
     soloBusy.current = true; setSoloSaving(true);
-    const id = selected.id, wasSolo = soloIds.includes(id);
+    const id = selected.id, wasSolo = soloIds.includes(id), userId = user?.id;
     try {
       if (wasSolo) await api.cancelEventSolo(id); else await api.joinEventSolo(id);
+      if (currentUserId.current !== userId) return;
+      // The successful write is authoritative. Ignore earlier membership reads
+      // and do not immediately replace it with a potentially stale list response.
+      membershipRequest.current++;
       setSoloIds(previous => wasSolo ? (previous ?? []).filter(item => item !== id) : [...new Set([...(previous ?? []), id])]);
+      setMembershipError("");
       flash({ kind: "success", text: wasSolo ? "Самостоятельное участие отменено" : "Вы идёте самостоятельно" });
-      await refreshEvent(id);
+      try {
+        await refreshEvent(id, { refreshMembership: false });
+      } catch {
+        flash({ kind: "error", text: "Участие сохранено, но счётчики не обновились. Откройте событие ещё раз." });
+      }
     } catch (error) { handleError(error); }
     finally { soloBusy.current = false; setSoloSaving(false); }
   });
