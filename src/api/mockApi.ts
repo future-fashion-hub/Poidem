@@ -1,6 +1,6 @@
 import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
-import { createMockMapEvents, extraMapCities, relocateMockMapEvent } from "./mockMapEvents";
+import { createMockMapEvents, extraMapCities, relocateMockMapEvent, refreshMockMapEventContent } from "./mockMapEvents";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
@@ -75,7 +75,7 @@ const initialReports: Report[] = [
   { id: 2, targetType: "company", targetId: 4, reason: "Спам", description: "Организатор отправляет одинаковые сообщения участникам.", author: people[2], status: "pending", resolvedBy: null, createdAt: "2026-09-23T10:05:00+03:00", resolvedAt: null },
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
-const mapEventsSeedVersion = 2;
+const mapEventsSeedVersion = 3;
 const fresh = (): State & { mapEventsSeedVersion: number } => ({ mapEventsSeedVersion, user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
@@ -84,6 +84,7 @@ function load(): State {
     const parsed = JSON.parse(saved) as Partial<State> & { mapEventsSeedVersion?: number };
     const events = (parsed.events ?? initialEvents).map(event => {
       if ((parsed.mapEventsSeedVersion ?? 0) < 2) event = relocateMockMapEvent(event);
+      if ((parsed.mapEventsSeedVersion ?? 0) < 3) event = refreshMockMapEventContent(event);
       // Older demo snapshots predate location. Restore only known, unchanged
       // demo venues; keep explicit nulls and user-created events untouched.
       if (Object.prototype.hasOwnProperty.call(event, "location")) return event;

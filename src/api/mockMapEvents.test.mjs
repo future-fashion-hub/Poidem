@@ -28,6 +28,8 @@ test("fresh demo contains 20 extra mapped events with covers and valid dictionar
   const added = items.filter(event => event.id >= 2001 && event.id <= 2020);
   assert.equal(items.length, 26); assert.equal(added.length, 20);
   assert.equal(new Set(items.map(event => event.id)).size, 26);
+  assert.equal(new Set(added.map(event => new URL(event.imageUrl).pathname)).size, 20, "all twenty covers use different source photos");
+  assert.equal(new Set(added.map(event => event.description)).size, 20);
   assert.equal(new Set(added.map(event => `${event.location.latitude},${event.location.longitude}`)).size, 20);
   for (const event of added) {
     assert.equal(event.status, "active");
@@ -36,6 +38,7 @@ test("fresh demo contains 20 extra mapped events with covers and valid dictionar
     assert.ok(dictionaries.categories.some(category => category.id === event.categoryId));
     assert.match(event.imageUrl, /^https:\/\/images\.unsplash\.com\//);
     assert.ok(event.description && event.locationName);
+    assert.ok(event.description.length >= 120, "each event has its own detailed description");
     assert.ok(Date.parse(event.endsAt) > Date.parse(event.startsAt));
     assert.ok(Date.parse(event.startsAt) > Date.parse("2026-10-17"));
   }
@@ -96,7 +99,7 @@ test("version-one snapshots relocate the old Moscow seeds but preserve user edit
   const favoritesByUser = { 777: [{ eventId: 2004, savedAt: "2026-10-17" }] };
   const storage = demo(JSON.stringify({ mapEventsSeedVersion: 1, events: [oldMoscowEvent, editedVenue], favoritesByUser }));
   const migrated = JSON.parse(storage.snapshot());
-  assert.equal(migrated.mapEventsSeedVersion, 2);
+  assert.equal(migrated.mapEventsSeedVersion, 3);
   assert.equal(migrated.events.length, 2, "deleted demo events must not come back");
   const moved = migrated.events.find(event => event.id === 2004);
   assert.equal(moved.cityId, 6);
@@ -106,4 +109,27 @@ test("version-one snapshots relocate the old Moscow seeds but preserve user edit
   assert.match(moved.startsAt, /\+07:00$/);
   assert.deepEqual(migrated.events.find(event => event.id === 2002), editedVenue);
   assert.deepEqual(migrated.favoritesByUser, favoritesByUser);
+});
+
+test("content upgrade replaces repeated seed photos and short descriptions without overwriting custom content", async () => {
+  const current = (await demo().api.listEvents()).items;
+  const originalImage = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&h=700&fit=crop&auto=format";
+  const old = { ...current.find(event => event.id === 2001), description: "Знакомимся за чашкой кофе и делимся планами на выходные.", imageUrl: originalImage };
+  const customText = { ...current.find(event => event.id === 2002), description: "Моё описание встречи", imageUrl: originalImage };
+  const customPhoto = { ...old, id: 2008, description: "Практикуем язык в дружеской компании. Ошибаться можно и нужно.", imageUrl: "https://example.com/my-photo.jpg" };
+  const favoritesByUser = { 777: [{ eventId: 2001, savedAt: "2026-10-17" }] };
+  const storage = demo(JSON.stringify({ mapEventsSeedVersion: 2, events: [old, customText, customPhoto], favoritesByUser }));
+  const migrated = JSON.parse(storage.snapshot());
+  assert.equal(migrated.mapEventsSeedVersion, 3);
+  assert.equal(migrated.events.length, 3);
+  assert.deepEqual(migrated.favoritesByUser, favoritesByUser);
+  const updated = migrated.events.find(event => event.id === 2001);
+  assert.notEqual(updated.description, old.description);
+  assert.notEqual(updated.imageUrl, old.imageUrl);
+  assert.deepEqual(updated.location, old.location);
+  assert.equal(migrated.events.find(event => event.id === 2002).description, customText.description);
+  assert.notEqual(migrated.events.find(event => event.id === 2002).imageUrl, originalImage);
+  assert.equal(migrated.events.find(event => event.id === 2008).imageUrl, customPhoto.imageUrl);
+  assert.notEqual(migrated.events.find(event => event.id === 2008).description, customPhoto.description);
+  assert.deepEqual((await demo(storage.snapshot()).api.listEvents()).items.map(event => event.id).sort(), [2001, 2002, 2008]);
 });
