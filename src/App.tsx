@@ -30,6 +30,7 @@ import MapOutlined from "@mui/icons-material/MapOutlined";
 import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
 import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
 import NearbyEvents from "./components/NearbyEvents";
+import { getNearbyLocation } from "./api/nearbyPermissions";
 
 const Globe = lazy(() => import("./components/Globe"));
 
@@ -66,6 +67,7 @@ const mockApi = api;
 
 export default function App() {
   useEffect(observeScrollCards, []);
+  useEffect(() => { void getNearbyLocation().catch(() => undefined); }, []);
   useEffect(() => {
     let touchInput = false;
     const clearTouchFocus = () => {
@@ -354,7 +356,7 @@ export default function App() {
     {!onboardingRequired && view === "profile" && user ? <UserDashboard revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onCreate={() => requireAuth(() => setEventCreateOpen(true))} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
-    {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent} onBrowseMap={() => { setNearbyOpen(false); setView("map"); }} isPublicEvent={isPublicEvent}/>}
+    {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent} isPublicEvent={isPublicEvent}/>}
     </PageErrorBoundary>
     </div>
     {selected && !secondaryModalOpen && <EventDrawer event={selected} city={cities.find((item) => item.id === selected.cityId)} category={categories.find((item) => item.id === selected.categoryId)} companies={companies} joinedCompanyIds={joinedCompanyIds} onClose={() => setSelected(null)} onJoin={handleCompanyAction} soloJoined={soloIds?.includes(selected.id) ?? false} soloLoading={Boolean(user && soloIds === null)} soloSaving={soloSaving} membershipError={membershipError} onReloadParticipation={() => { void refreshParticipation().catch(handleError); }} onSolo={toggleSolo} onCreate={() => requireAuth(() => setCompanyOpen(true))} />}

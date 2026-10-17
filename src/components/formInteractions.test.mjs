@@ -45,7 +45,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText;
   const componentCode = code + (environment.component ? `\nexports.default = ${environment.component};` : "");
-  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", componentCode)(name => {
+  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", "document", componentCode)(name => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
     if (name in modules) return modules[name];
@@ -53,7 +53,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts" };
     if (name in utilities) return pureModule(utilities[name]);
     return { __esModule: true, default: name };
-  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {});
+  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {} });
   return {
     render(props) { cursor = 0; effects.length = 0; return exports.default(props); },
     runEffects() { return effects.map(effect => effect()).filter(Boolean); },
@@ -295,9 +295,36 @@ test("home filters expose text, city and category with independent clearing", ()
   assert.deepEqual(changes, [["search", "кофе"], ["city", 3], ["category", 4], ["reset"]]);
 });
 
-test("plain visits do not initiate geolocation", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.equal(app.includes("getNearbyLocation"), false);
+test("site startup requests location automatically and tolerates permission denial", async () => {
+  let calls = 0;
+  const harness = componentHarness("../App.tsx", {
+    "./api/nearbyPermissions": { getNearbyLocation: async () => { calls++; throw new Error("Permission denied"); } },
+  });
+  harness.render();
+  harness.runEffectContaining("getNearbyLocation");
+  await flush();
+  assert.equal(calls, 1);
+});
+
+test("nearby locates on opening and shows no duplicate error buttons; toolbar refresh retries", async () => {
+  let calls = 0;
+  const props = { open: false, suspended: false, categories: [], onOpenChange: open => { props.open = open; }, onOpenEvent() {} };
+  const harness = componentHarness("./NearbyEvents.tsx", {
+    "./usePopupDismiss": { usePopupDismiss: () => ({ closing: false, dismiss() {} }) },
+    "./useModalDialog": { useModalDialog() {} },
+    "../api/nearbyPermissions": { getNearbyLocation: async () => { calls++; throw new Error("Разрешите геолокацию в браузере"); } },
+  });
+  let tree = harness.render(props);
+  find(tree, node => node.props?.className === "nearby-trigger").props.onClick({ detail: 1 });
+  await flush();
+  tree = harness.render(props);
+  assert.equal(calls, 1);
+  const error = find(tree, node => node.props?.className === "nearby-state");
+  assert.ok(find(error, node => node.props?.role === "alert"));
+  assert.equal(find(error, node => node.type === "button"), undefined);
+  find(tree, node => node.props?.className === "nearby-refresh").props.onClick();
+  await flush();
+  assert.equal(calls, 2);
 });
 
 test("company creation refreshes both the event drawer and the background feed", async () => {

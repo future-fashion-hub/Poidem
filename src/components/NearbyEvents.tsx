@@ -18,13 +18,13 @@ import "./nearby.css";
 type MotionConstructor = typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
 type MotionState = "available" | "permission" | "enabled" | "denied" | "unsupported";
 type SearchState = "idle" | "locating" | "loading" | "ready" | "error";
-type Props = { open: boolean; onOpenChange: (open: boolean) => void; suspended: boolean; categories: DictionaryItem[]; onOpenEvent: (event: Event) => void; onBrowseMap: () => void; isPublicEvent?: (event: Event) => boolean };
+type Props = { open: boolean; onOpenChange: (open: boolean) => void; suspended: boolean; categories: DictionaryItem[]; onOpenEvent: (event: Event) => void; isPublicEvent?: (event: Event) => boolean };
 const radii = [5, 10, 25, 50];
 const motionAPI = () => typeof DeviceMotionEvent === "undefined" ? null : DeviceMotionEvent as MotionConstructor;
 const initialMotionState = (): MotionState => !window.isSecureContext || !motionAPI() ? "unsupported" : motionAPI()?.requestPermission ? "permission" : "available";
 const dateLabel = (value: string) => new Date(value).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
-export default function NearbyEvents({ open, onOpenChange, suspended, categories, onOpenEvent, onBrowseMap, isPublicEvent }: Props) {
+export default function NearbyEvents({ open, onOpenChange, suspended, categories, onOpenEvent, isPublicEvent }: Props) {
   const [motionState, setMotionState] = useState<MotionState>(initialMotionState);
   const [radius, setRadius] = useState(10);
   const [state, setState] = useState<SearchState>("idle");
@@ -148,7 +148,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
         <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
         <div className="nearby-content" aria-busy={loading}>
           {loading ? <div className="nearby-state" role="status"><span className="nearby-searching"><TravelExploreOutlined aria-hidden="true"/></span><h3>{state === "locating" ? "Ищем вашу точку на карте" : "Собираем планы поблизости"}</h3><p>{state === "locating" ? "Разрешите доступ к геопозиции, если браузер попросит." : `Смотрим события в радиусе ${radius} км.`}</p></div>
-            : state === "error" ? <div className="nearby-state"><NearMeOutlined aria-hidden="true"/><h3>Пока не удалось найти вас</h3><p role="alert">{error}</p><button type="button" className="nearby-primary" onClick={() => { void search(radius, true); }}>Попробовать ещё раз</button><button type="button" className="nearby-primary" onClick={onBrowseMap}>Выбрать город на карте</button></div>
+            : state === "error" ? <div className="nearby-state"><NearMeOutlined aria-hidden="true"/><h3>Пока не удалось найти вас</h3><p role="alert">{error}</p><p>Местоположение определяется автоматически. После разрешения доступа нажмите значок обновления сверху.</p></div>
             : state === "ready" ? <>
               <div className="nearby-summary" role="status">Найдено: {countLabel(results.length, "events")}{accuracy !== null && accuracy > 1000 && <span>Геопозиция приблизительная: ±{distanceLabel(accuracy / 1000)}</span>}</div>
               {results.length ? <div className="nearby-list">{results.map(({ event, distance }) => <button type="button" key={event.id} className="nearby-card" onClick={() => { onOpenChange(false); onOpenEvent(event); }} aria-label={`Открыть ${event.title}, ${distanceLabel(distance)} от вас`}>
