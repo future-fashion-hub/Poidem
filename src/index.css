@@ -159,7 +159,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .atlas-heading h1 { margin-top: 10px; font-size: clamp(30px, 4vw, 46px); font-weight: 800; line-height: 1.12; letter-spacing: -.055em; }
 .atlas-heading h1 span { color: var(--lime); }
 .atlas-heading p:last-child { margin-top: 14px; color: #60715b; font-size: 14px; line-height: 1.65; }
-.atlas-heading-icon { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 22px; background: var(--lime); color: var(--ink); transform: rotate(-7deg); }
+.atlas-heading-icon, .plans-find-icon { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 22px; background: var(--lime); color: var(--ink); transform: rotate(-7deg); }
+.atlas-heading-icon > svg, .plans-find-icon > svg { display: block; width: 28px; height: 28px; }
 .atlas-layout { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 28px; align-items: start; }
 .atlas-page .atlas-filters { position: sticky; top: 100px; border: 1px solid var(--atlas-border); border-radius: 22px; padding: 20px; background: #fff; box-shadow: 0 8px 24px rgba(16,35,24,.035); }
 .atlas-filter-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
@@ -287,7 +288,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (hover: hover) and (pointer: fine) {
 .plans-button--primary:hover { background: #afe529; box-shadow: 0 6px 18px rgba(132,181,20,.24); }
 }
-.plans-find-icon { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 22px; background: var(--lime); color: var(--ink); transform: rotate(-7deg); }
 .plans-button--secondary { background: #fff; border-color: #d8ddd2; color: #344b3b; }
 @media (hover: hover) and (pointer: fine) {
 .plans-button--secondary:hover { border-color: #9dab97; background: #f3f5ef; }
