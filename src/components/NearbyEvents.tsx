@@ -11,7 +11,7 @@ import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import { api } from "../api";
 import { collectPages } from "../api/pagination";
 import { getNearbyLocation } from "../api/nearbyPermissions";
-import { createShakeDetector, distanceLabel, nearbyBounds, nearbyEvents, type Coordinates, type NearbyEvent } from "../api/nearby";
+import { createShakeDetector, distanceLabel, nearbyBounds, nearbyEvents, type Coordinates } from "../api/nearby";
 import type { DictionaryItem, Event } from "../api/types";
 import "./nearby.css";
 
@@ -23,12 +23,14 @@ const radii = [5, 10, 25, 50];
 const motionAPI = () => typeof DeviceMotionEvent === "undefined" ? null : DeviceMotionEvent as MotionConstructor;
 const initialMotionState = (): MotionState => !window.isSecureContext || !motionAPI() ? "unsupported" : motionAPI()?.requestPermission ? "permission" : "available";
 const dateLabel = (value: string) => new Date(value).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+type SearchResult = { event: Event; distance?: number };
 
 export default function NearbyEvents({ open, onOpenChange, suspended, categories, onOpenEvent, isPublicEvent }: Props) {
   const [motionState, setMotionState] = useState<MotionState>(initialMotionState);
   const [radius, setRadius] = useState(10);
   const [state, setState] = useState<SearchState>("idle");
-  const [results, setResults] = useState<NearbyEvent[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [fallbackMessage, setFallbackMessage] = useState("");
   const [error, setError] = useState("");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [shakeVersion, setShakeVersion] = useState(0);
@@ -47,7 +49,7 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     if (busy.current || suspended || document.visibilityState === "hidden") return;
     busy.current = true;
     const current = ++generation.current;
-    setState("locating"); setError(""); onOpenChange(true);
+    setState("locating"); setError(""); setFallbackMessage(""); onOpenChange(true);
     try {
       // iOS must receive this call synchronously within the original tap.
       if (fromTap && motionState === "permission") {
@@ -56,16 +58,28 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
       }
       if (current !== generation.current) return;
       let point = reusePosition ? position.current : null;
-      if (!point) {
-        const located = await getNearbyLocation(refreshPosition);
+      try {
+        if (!point) {
+          const located = await getNearbyLocation(refreshPosition);
+          if (current !== generation.current) return;
+          point = { latitude: located.coords.latitude, longitude: located.coords.longitude };
+          position.current = point; setAccuracy(located.coords.accuracy);
+        }
+        setState("loading");
+        const list = await collectPages(options => api.listEvents({ ...nearbyBounds(point!, nextRadius), sort: "date" }, options));
         if (current !== generation.current) return;
-        point = { latitude: located.coords.latitude, longitude: located.coords.longitude };
-        position.current = point; setAccuracy(located.coords.accuracy);
+        const nearby = nearbyEvents(isPublicEvent ? list.items.filter(isPublicEvent) : list.items, point, nextRadius);
+        if (nearby.length) { setResults(nearby); setState("ready"); return; }
+        setFallbackMessage(`В радиусе ${nextRadius} км ничего не нашлось. Показываем все доступные события.`);
+      } catch {
+        if (current !== generation.current) return;
+        setFallbackMessage(point ? "Поиск рядом недоступен. Показываем все доступные события." : "Не удалось определить местоположение. Показываем все доступные события.");
       }
       setState("loading");
-      const list = await collectPages(options => api.listEvents({ ...nearbyBounds(point!, nextRadius), sort: "date" }, options));
+      const list = await collectPages(options => api.listEvents({ sort: "date" }, options));
       if (current !== generation.current) return;
-      setResults(nearbyEvents(isPublicEvent ? list.items.filter(isPublicEvent) : list.items, point, nextRadius));
+      const now = Date.now();
+      setResults(list.items.filter(event => event.status === "active" && Date.parse(event.endsAt ?? event.startsAt) > now && (!isPublicEvent || isPublicEvent(event))).map(event => ({ event })));
       setState("ready");
     } catch (caught) {
       if (current !== generation.current) return;
@@ -145,15 +159,15 @@ export default function NearbyEvents({ open, onOpenChange, suspended, categories
     {open && createPortal(<div data-closing={closing || undefined} className="nearby-overlay" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="nearby-shake-layer"><section id="nearby-dialog" ref={panel} className="nearby-panel" role="dialog" aria-modal="true" aria-labelledby="nearby-title" onKeyDown={trapFocus}>
         <header className="nearby-heading"><span className="nearby-heading-icon"><TravelExploreOutlined aria-hidden="true"/></span><div><p>Ближе, чем кажется</p><h2 id="nearby-title">События рядом<span>.</span></h2></div><button ref={closeButton} type="button" className="nearby-close" aria-label="Закрыть события рядом" onClick={close}><CloseRounded/></button></header>
-        <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>От вашей геопозиции</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
+        <div className="nearby-controls"><div><span><NearMeOutlined aria-hidden="true"/>{fallbackMessage ? "Общая подборка" : "От вашей геопозиции"}</span><button type="button" disabled={loading} className="nearby-refresh" onClick={() => { void search(radius, true, false, true); }} aria-label="Обновить геопозицию и события"><RefreshRounded/></button></div><div className="nearby-radius" aria-label="Радиус поиска">{radii.map(value => <button key={value} type="button" aria-pressed={radius === value} disabled={loading} onClick={() => changeRadius(value)}>{value} км</button>)}</div></div>
         <div className="nearby-content" aria-busy={loading}>
-          {loading ? <div className="nearby-state" role="status"><span className="nearby-searching"><TravelExploreOutlined aria-hidden="true"/></span><h3>{state === "locating" ? "Ищем вашу точку на карте" : "Собираем планы поблизости"}</h3><p>{state === "locating" ? "Разрешите доступ к геопозиции, если браузер попросит." : `Смотрим события в радиусе ${radius} км.`}</p></div>
-            : state === "error" ? <div className="nearby-state"><NearMeOutlined aria-hidden="true"/><h3>Пока не удалось найти вас</h3><p role="alert">{error}</p><p>Местоположение определяется автоматически. После разрешения доступа нажмите значок обновления сверху.</p></div>
+          {loading ? <div className="nearby-state" role="status"><span className="nearby-searching"><TravelExploreOutlined aria-hidden="true"/></span><h3>{state === "locating" ? "Ищем вашу точку на карте" : fallbackMessage ? "Загружаем все события" : "Собираем планы поблизости"}</h3><p>{state === "locating" ? "Разрешите доступ к геопозиции, если браузер попросит." : fallbackMessage ? "Подбираем события в разных городах." : `Смотрим события в радиусе ${radius} км.`}</p></div>
+            : state === "error" ? <div className="nearby-state"><NearMeOutlined aria-hidden="true"/><h3>Не удалось загрузить события</h3><p role="alert">{error}</p><p>Проверьте подключение и нажмите значок обновления сверху.</p></div>
             : state === "ready" ? <>
-              <div className="nearby-summary" role="status">Найдено: {countLabel(results.length, "events")}{accuracy !== null && accuracy > 1000 && <span>Геопозиция приблизительная: ±{distanceLabel(accuracy / 1000)}</span>}</div>
-              {results.length ? <div className="nearby-list">{results.map(({ event, distance }) => <button type="button" key={event.id} className="nearby-card" onClick={() => { onOpenChange(false); onOpenEvent(event); }} aria-label={`Открыть ${event.title}, ${distanceLabel(distance)} от вас`}>
-                <span className="nearby-card-image">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <TravelExploreOutlined aria-hidden="true"/>}</span><span className="nearby-card-copy"><span className="nearby-card-meta"><span>{categories.find(item => item.id === event.categoryId)?.name ?? "Событие"}</span><b>{distanceLabel(distance)}</b></span><strong>{event.title}</strong><time dateTime={event.startsAt}>{dateLabel(event.startsAt)}</time><span className="nearby-card-place">{event.locationName}</span></span><ArrowOutwardRounded className="nearby-card-arrow" aria-hidden="true"/>
-              </button>)}</div> : <div className="nearby-state"><TravelExploreOutlined aria-hidden="true"/><h3>Пока нет планов так близко</h3><p>В радиусе {radius} км нет ближайших событий с точкой на карте.{radius < 50 ? " Давайте посмотрим чуть дальше?" : " Загляните позже — афиша пополняется."}</p>{radius < 50 && <button type="button" className="nearby-primary" onClick={() => changeRadius(radii[radii.indexOf(radius) + 1])}>Посмотреть в радиусе {radii[radii.indexOf(radius) + 1]} км</button>}</div>}
+              <div className="nearby-summary" role="status">{fallbackMessage ? "Все доступные события: " : "Найдено: "}{countLabel(results.length, "events")}{fallbackMessage && <span>{fallbackMessage}</span>}{!fallbackMessage && accuracy !== null && accuracy > 1000 && <span>Геопозиция приблизительная: ±{distanceLabel(accuracy / 1000)}</span>}</div>
+              {results.length ? <div className="nearby-list">{results.map(({ event, distance }) => <button type="button" key={event.id} className="nearby-card" onClick={() => { onOpenChange(false); onOpenEvent(event); }} aria-label={distance === undefined ? `Открыть ${event.title}` : `Открыть ${event.title}, ${distanceLabel(distance)} от вас`}>
+                <span className="nearby-card-image">{event.imageUrl ? <img src={event.imageUrl} alt="" loading="lazy"/> : <TravelExploreOutlined aria-hidden="true"/>}</span><span className="nearby-card-copy"><span className="nearby-card-meta"><span>{categories.find(item => item.id === event.categoryId)?.name ?? "Событие"}</span>{distance !== undefined && <b>{distanceLabel(distance)}</b>}</span><strong>{event.title}</strong><time dateTime={event.startsAt}>{dateLabel(event.startsAt)}</time><span className="nearby-card-place">{event.locationName}</span></span><ArrowOutwardRounded className="nearby-card-arrow" aria-hidden="true"/>
+              </button>)}</div> : <div className="nearby-state"><TravelExploreOutlined aria-hidden="true"/><h3>{fallbackMessage ? "Пока нет доступных событий" : "Пока нет планов так близко"}</h3><p>{fallbackMessage ? "Загляните позже — афиша пополняется." : `В радиусе ${radius} км нет ближайших событий с точкой на карте.`}</p>{!fallbackMessage && radius < 50 && <button type="button" className="nearby-primary" onClick={() => changeRadius(radii[radii.indexOf(radius) + 1])}>Посмотреть в радиусе {radii[radii.indexOf(radius) + 1]} км</button>}</div>}
             </> : null}
         </div>
         <footer className="nearby-footnote"><span>{motionState === "enabled" || motionState === "available" ? "Встряхните телефон ещё раз, чтобы обновить подборку." : motionState === "denied" ? "Доступ к движению закрыт. Поиск по нажатию работает." : motionState === "permission" ? "Нажмите обновление, чтобы включить поиск встряхиванием." : "На этом устройстве используйте поиск по нажатию."}</span><small>Местоположение используется только для поиска рядом.</small></footer>

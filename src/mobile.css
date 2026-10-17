@@ -164,7 +164,7 @@ button, a { touch-action: manipulation; }
   .site-date-popover .rdp-root { --rdp-day-width: 36px; --rdp-day-height: 40px; }
   .site-date-time { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .site-date-actions button { min-height: 44px; font-size: 13px; }
-  .auth-card, .onboarding-form, .event-create-dialog, .event-modal-panel, .favorites-drawer { max-width: 100vw; }
+  .auth-card, .onboarding-form, .event-create-dialog, .favorites-drawer { max-width: 100vw; }
   .auth-card { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
   .event-create-head { gap: 12px; }
   .event-create-head h2 { font-size: 28px; }

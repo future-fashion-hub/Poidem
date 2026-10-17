@@ -378,3 +378,49 @@ test("company creation refreshes both the event drawer and the background feed",
   assert.equal(getComponent(tree, "EventDrawer").props.event.companiesCount, 2);
   assert.equal(getComponent(tree, "./components/EventFeed").props.events[0].companiesCount, 2);
 });
+
+for (const scenario of ["empty", "denied", "nearby_request_error", "found", "catalogue_error", "all_empty"]) test(`nearby falls back to the full catalogue only when needed (${scenario})`, async () => {
+  const requests = [];
+  const event = { id: 42, title: "Встреча", startsAt: "2099-11-01T18:00:00+03:00", endsAt: null, status: "active", locationName: "Место" };
+  const catalogue = [event, { ...event, id: 43, title: "Событие без координат", location: null }, { ...event, id: 44, status: "pending" }, { ...event, id: 45, endsAt: "2000-01-01" }, { ...event, id: 46, title: "Скрытое" }];
+  const props = { open: false, suspended: false, categories: [], onOpenChange: open => { props.open = open; }, onOpenEvent() {}, isPublicEvent: item => item.id !== 46 };
+  const harness = componentHarness("./NearbyEvents.tsx", {
+    "./usePopupDismiss": { usePopupDismiss: () => ({ closing: false, dismiss() {} }) },
+    "./useModalDialog": { useModalDialog() {} },
+    "../api/nearbyPermissions": { getNearbyLocation: async () => { if (scenario === "denied") throw new Error("Denied"); return { coords: { latitude: 55, longitude: 37, accuracy: 10 } }; } },
+    "../api/pagination": { collectPages: fetch => fetch({}) },
+    "../api": { api: { listEvents: async filters => {
+      requests.push(filters);
+      if (filters.west !== undefined && scenario === "nearby_request_error") throw new Error("Nearby unavailable");
+      if (filters.west === undefined && scenario === "catalogue_error") throw new Error("Не удалось загрузить афишу");
+      if (scenario === "all_empty") return { items: [] };
+      return { items: filters.west !== undefined ? [] : catalogue };
+    } } },
+    "../api/nearby": { nearbyBounds: () => ({ west: 36, east: 38, south: 54, north: 56 }), nearbyEvents: () => scenario === "found" ? [{ event, distance: 2.5 }] : [], distanceLabel: value => `${value} км` },
+  });
+  let tree = harness.render(props);
+  find(tree, node => node.props?.className === "nearby-trigger").props.onClick({ detail: 1 });
+  await flush();
+  tree = harness.render(props);
+  if (scenario === "catalogue_error") {
+    assert.equal(find(tree, node => node.props?.role === "alert").props.children, "Не удалось загрузить афишу");
+    assert.equal(find(tree, node => node.props?.className === "nearby-refresh").props.disabled, false);
+    return;
+  }
+  if (scenario === "all_empty") {
+    assert.ok(find(tree, node => node.type === "h3" && node.props.children === "Пока нет доступных событий"));
+    return;
+  }
+  const list = find(tree, node => node.props?.className === "nearby-list");
+  assert.ok(list);
+  assert.equal(list.props.children.length, scenario === "found" ? 1 : 2);
+  if (scenario === "found") {
+    assert.equal(requests.length, 1);
+    assert.match(list.props.children[0].props["aria-label"], /2.5 км/);
+  } else {
+    assert.deepEqual(requests.at(-1), { sort: "date" }, "fallback has no city, bounds or radius constraint");
+    assert.ok(list.props.children.every(card => !card.props["aria-label"].includes("от вас")));
+    const summary = find(tree, node => node.props?.className === "nearby-summary");
+    assert.equal(summary.props.children[0], "Все доступные события: ");
+  }
+});

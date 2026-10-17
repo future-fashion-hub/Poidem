@@ -64,3 +64,14 @@ test("solo participation changes color without stretching the action row", () =>
   assert.equal(declarations('.event-modal-action-primary[data-joined="true"]', 1440).background, "var(--ink)");
   assert.equal(declarations('.event-modal-action-primary[data-joined="true"]', 1440).color, "var(--lime)");
 });
+
+for (const width of [320, 393, 402, 440, 767]) test(`event popup can shrink and wrap long venue names at ${width}px`, () => {
+  const panel = declarations(".event-modal-panel", width);
+  assert.equal(panel["min-width"], "0");
+  assert.equal(panel["max-width"], "100%");
+  assert.equal(panel["overflow-x"], "hidden");
+  assert.equal(declarations(".event-modal-facts > div > span:last-child", width)["min-width"], "0");
+  const text = declarations(".event-modal-facts strong", width);
+  assert.equal(text["white-space"], "normal");
+  assert.equal(text["overflow-wrap"], "anywhere");
+});

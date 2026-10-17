@@ -1144,7 +1144,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 .event-modal-panel {
   width: min(720px, 100%);
+  min-width: 0;
+  max-width: 100%;
   height: 100dvh;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 0;
@@ -1181,15 +1184,16 @@ h1, h2, h3, h4, h5, h6 {
 .event-modal-cover-meta { position: absolute; right: 24px; bottom: 24px; left: 24px; display: flex; align-items: end; justify-content: space-between; gap: 18px; color: white; }
 .event-modal-cover-meta span { padding: 8px 12px; border-radius: 999px; color: #102318; background: #bdf238; font-size: 11px; font-weight: 850; text-transform: uppercase; letter-spacing: .09em; }
 .event-modal-cover-meta time { font-size: 13px; font-weight: 750; text-align: right; text-shadow: 0 2px 12px rgba(0, 0, 0, .4); }
-.event-modal-body { padding: 24px clamp(22px, 4vw, 34px) 32px; }
+.event-modal-body { min-width: 0; overflow-wrap: anywhere; padding: 24px clamp(22px, 4vw, 34px) 32px; }
 .event-modal-header > p, .event-modal-section-heading p { color: #6b806f; font-size: 10px; font-weight: 850; text-transform: uppercase; letter-spacing: .18em; }
 .event-modal-header h2 { max-width: 620px; margin-top: 8px; font-size: clamp(31px, 5vw, 48px); line-height: 1.02; font-weight: 850; letter-spacing: -.055em; text-wrap: balance; }
 .event-modal-facts { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; margin-top: 18px; }
 .event-modal-facts > div { display: flex; min-width: 0; align-items: center; gap: 12px; padding: 14px 15px; border: 1px solid #dce6d7; border-radius: 18px; background: rgba(255, 255, 255, .72); }
+.event-modal-facts > div > span:last-child { flex: 1; min-width: 0; }
 .event-modal-fact-icon { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 13px; color: #315239; background: #e7f3cb; }
 .event-modal-facts small, .event-modal-facts strong { display: block; min-width: 0; }
 .event-modal-facts small { margin-bottom: 3px; color: #809083; font-size: 10px; font-weight: 700; }
-.event-modal-facts strong { overflow: hidden; color: #24392a; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.event-modal-facts strong { color: #24392a; font-size: 12px; font-weight: 750; white-space: normal; overflow-wrap: anywhere; }
 .event-modal-description { margin-top: 18px; color: #53675a; font-size: 15px; line-height: 1.7; }
 .event-modal-actions { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 10px; margin-top: 20px; }
 .event-modal-actions button { display: flex; min-width: 0; min-height: 54px; padding: 12px 16px; align-items: center; justify-content: center; gap: 9px; border-radius: 17px; font-size: 13px; font-weight: 820; transition: transform .18s ease, background .18s ease, border-color .18s ease, color .18s ease; }
