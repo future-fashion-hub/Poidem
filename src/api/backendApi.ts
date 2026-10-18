@@ -2,6 +2,7 @@ import type { CompanyInput, CompanyInvitation, CompanyInvitationOptions, Company
 import { ApiError } from "./types";
 import type { CoffeeFilters, CoffeeInput, CoffeeMeeting } from "./coffeeTypes";
 import type { SiteNotification } from "./notificationTypes";
+import type { ChatPoll, ChatPollInput } from "./chatActivityTypes";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
 const API_PREFIX = `${BACKEND_URL}/api/v1`;
@@ -135,6 +136,12 @@ export const backendApi = {
   async listMyCompanies(options: PageOptions = {}) { return request<Paginated<Company>>(`/users/me/companies${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async listMyEvents(options: PageOptions = {}) { return request<Paginated<Event>>(`/users/me/events${query({ status: "upcoming", page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async listCompanyMessages(companyId: number, options: PageOptions = {}) { return request<Paginated<CompanyMessage>>(`/companies/${companyId}/messages${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async listCompanyPolls(companyId: number, options: PageOptions = {}) { return request<Paginated<ChatPoll>>(`/companies/${companyId}/polls${query({ page: options.page ?? 1, limit: options.limit ?? 30 })}`); },
+  async createCompanyPoll(companyId: number, input: ChatPollInput) { return request<ChatPoll>(`/companies/${companyId}/polls`, { method: "POST", body: JSON.stringify(input) }); },
+  async voteCompanyPoll(companyId: number, pollId: number, optionId: string | null) { return request<ChatPoll>(`/companies/${companyId}/polls/${pollId}/vote`, { method: "PUT", body: JSON.stringify({ optionId }) }); },
+  async closeCompanyPoll(companyId: number, pollId: number) { return request<ChatPoll>(`/companies/${companyId}/polls/${pollId}/close`, { method: "POST" }); },
+  async getCompanyPinnedMessage(companyId: number) { return request<CompanyMessage | null>(`/companies/${companyId}/pinned-message`); },
+  async setCompanyPinnedMessage(companyId: number, messageId: number | null) { return request<CompanyMessage | null>(`/companies/${companyId}/pinned-message`, messageId === null ? { method: "DELETE" } : { method: "PUT", body: JSON.stringify({ messageId }) }); },
   async sendCompanyMessage(companyId: number, text: string) { return request<CompanyMessage>(`/companies/${companyId}/messages`, { method: "POST", body: JSON.stringify({ text }) }); },
   async loginAdmin(username: string, password: string) {
     const result = await this.loginWithPassword(username, password);

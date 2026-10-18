@@ -73,6 +73,46 @@ function find(node, predicate) {
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
+const pollFixture = { id: 7, companyId: 42, question: "Где встречаемся?", options: [{ id: "1", label: "У входа", votes: 1 }, { id: "2", label: "Внутри", votes: 0 }], votersCount: 1, selectedOptionId: "1", author: { id: 1, firstName: "Алексей" }, closesAt: "2099-01-01T12:00:00Z", closed: false };
+test("poll cards expose selection, changing/removing vote and owner-only closing controls", async () => {
+  const votes = [], closed = [];
+  const activities = { polls: [pollFixture], busy: false, loading: false, error: "", vote: async (...args) => votes.push(args), close: async id => closed.push(id) };
+  const harness = componentHarness("./ChatActivities.tsx");
+  const props = { company: { id: 42, owner: { id: 1 } }, userId: 3, activities };
+  let tree = harness.render(props);
+  const option = find(tree, node => node.props?.className === "chat-poll-option" && node.props["aria-pressed"] === true); assert.ok(option);
+  find(tree, node => node.props?.className === "chat-poll-option" && node.props["aria-pressed"] === false).props.onClick();
+  find(tree, node => node.props?.children === "Отозвать голос").props.onClick();
+  assert.deepEqual(votes, [[7, "2"], [7, null]]);
+  assert.equal(find(tree, node => node.props?.children === "Завершить опрос"), undefined);
+  tree = harness.render({ ...props, userId: 1 }); find(tree, node => node.props?.children === "Завершить опрос").props.onClick(); assert.deepEqual(closed, [7]);
+  tree = harness.render({ ...props, activities: { ...activities, polls: [{ ...pollFixture, closed: true }] } });
+  assert.equal(find(tree, node => node.props?.className === "chat-poll-option").props.disabled, true);
+});
+
+test("activity hook ignores old chat reads and prevents duplicate mutations", async () => {
+  let resolveRead, finishVote, voteCount = 0;
+  const api = { listCompanyPolls: id => id === 42 ? new Promise(resolve => { resolveRead = resolve; }) : Promise.resolve({ items: [] }), getCompanyPinnedMessage: async () => null,
+    voteCompanyPoll: () => { voteCount++; return new Promise(resolve => { finishVote = resolve; }); } };
+  const harness = componentHarness("./useChatActivities.ts", { "../api": { api }, "../api/pagination": { collectPages: load => load({}) } }, { component: "props => useChatActivities(props.companyId, props.userId)" });
+  const props = { companyId: 42, userId: 1 };
+  harness.render(props); const cleanup = harness.runEffectContaining("setInterval");
+  cleanup(); harness.render({ ...props, companyId: 43 }); harness.runEffectContaining("setInterval"); await flush();
+  resolveRead({ items: [pollFixture] }); await flush(); assert.deepEqual(harness.render({ ...props, companyId: 43 }).polls, []);
+  const hook = harness.render({ ...props, companyId: 43 }); const pending = hook.vote(7, "1"); await hook.vote(7, "1"); assert.equal(voteCount, 1);
+  finishVote({ ...pollFixture, companyId: 43 }); await pending; assert.equal(harness.render({ ...props, companyId: 43 }).polls[0].companyId, 43);
+});
+
+test("activity hook rejects stale pre-vote results and keeps confirmed data after a failed write", async () => {
+  let resolveRead; const error = new Error("Сервер отклонил голос");
+  const api = { listCompanyPolls: async () => ({ items: [pollFixture] }), getCompanyPinnedMessage: async () => null, voteCompanyPoll: async () => { throw error; } };
+  const harness = componentHarness("./useChatActivities.ts", { "../api": { api }, "../api/pagination": { collectPages: load => load({}) } }, { component: "props => useChatActivities(props.companyId, props.userId)" });
+  const props = { companyId: 42, userId: 1 }; harness.render(props); harness.runEffectContaining("setInterval"); await flush();
+  let hook = harness.render(props); api.listCompanyPolls = () => new Promise(resolve => { resolveRead = resolve; });
+  const read = hook.refresh(); assert.equal(await hook.vote(7, "2"), false); resolveRead({ items: [] }); await read;
+  hook = harness.render(props); assert.equal(hook.polls[0].selectedOptionId, "1"); assert.equal(hook.error, error.message); assert.equal(hook.loading, false); assert.equal(hook.busy, false);
+});
+
 test("missing notification backend is an explicit error, not fake demo notifications", async () => {
   const harness = componentHarness("./NotificationsCenter.tsx", {
     "../api": { backendMode: true, api: { listNotifications: async () => { throw new (pureModule("../api/types.ts").ApiError)("NOT_FOUND", "Missing", 404); } } },
@@ -320,12 +360,13 @@ test("coffee is a navigation section, not an action in the home hero", () => {
 });
 
 for (const requestedExists of [true, false]) test(`coffee chat opens only the requested company, including closed recruitment (exists=${requestedExists})`, async () => {
-  const companies = [{ id: 7, name: "Другой чат", status: "active", membersCount: 2, eventId: 70 }, { id: 8, name: "Наш кофе", status: "closed", membersCount: 4, eventId: 80 }];
+  const companies = [{ id: 7, name: "Другой чат", status: "active", membersCount: 2, eventId: 70, owner: { id: 1 } }, { id: 8, name: "Наш кофе", status: "closed", membersCount: 4, eventId: 80, owner: { id: 1 } }];
   const harness = componentHarness("./ChatsPage.tsx", {
     "../api": { backendMode: false, api: { listMyCompanies: async () => ({ items: companies }) } },
     "../api/pagination": { collectPages: fetch => fetch({}) },
     "../api/companyAvailability": { companyEventAvailable: () => true, loadCompanyEvents: async () => ({}) },
     "./useEventClock": { useEventClock: () => Date.now() },
+    "./useChatActivities": { useChatActivities: () => ({ polls: [], pinned: null }) },
   });
   const props = { userId: 1, initialCompanyId: requestedExists ? 8 : 99 };
   harness.render(props); harness.runEffectContaining("listMyCompanies"); await flush();

@@ -6,6 +6,8 @@ import { createCoffeeSeeds } from "./mockCoffee";
 import { coffeeCover, validateCoffee } from "./coffee";
 import type { SiteNotification } from "./notificationTypes";
 import { deriveNotifications, mergeNotifications } from "./demoNotifications";
+import type { ChatPollInput, StoredChatPoll } from "./chatActivityTypes";
+import { chatPollView, validateChatPoll } from "./chatPolls";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
@@ -65,7 +67,7 @@ const initialCompanies = [
 ];
 
 type StoredInvitation = CompanyInvitation & { redeemedBy: number[] };
-type State = { notificationsByUser: Record<string, SiteNotification[]>; companyInvitations: Record<string, StoredInvitation>; coffeeRecords: CoffeeRecord[]; coffeeSeedVersion: number; user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
+type State = { chatPolls: Record<string, StoredChatPoll[]>; chatPins: Record<string, number>; chatMessages: Record<string, CompanyMessage[]>; notificationsByUser: Record<string, SiteNotification[]>; companyInvitations: Record<string, StoredInvitation>; coffeeRecords: CoffeeRecord[]; coffeeSeedVersion: number; user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
 const storageKey = "poydem_mock_v1";
 const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [interests[0], interests[2], interests[6]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00", gender: "male", birthDate: "1997-05-18" };
 const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00", gender: null, birthDate: null };
@@ -83,7 +85,7 @@ const initialReports: Report[] = [
 ];
 const mapEventsSeedVersion = 3;
 const initialCoffee = createCoffeeSeeds(people);
-const fresh = (): State & { mapEventsSeedVersion: number } => ({ notificationsByUser: {}, companyInvitations: {}, mapEventsSeedVersion, coffeeSeedVersion: 1, coffeeRecords: [...initialCoffee.records], user: null, users: initialUsers, events: [...initialEvents, ...initialCoffee.events.map(event => ({ ...event }))], companies: [...initialCompanies, ...initialCoffee.companies.map(company => ({ ...company }))], applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
+const fresh = (): State & { mapEventsSeedVersion: number } => ({ chatPolls: {}, chatPins: {}, chatMessages: {}, notificationsByUser: {}, companyInvitations: {}, mapEventsSeedVersion, coffeeSeedVersion: 1, coffeeRecords: [...initialCoffee.records], user: null, users: initialUsers, events: [...initialEvents, ...initialCoffee.events.map(event => ({ ...event }))], companies: [...initialCompanies, ...initialCoffee.companies.map(company => ({ ...company }))], applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
     const saved = localStorage.getItem(storageKey);
@@ -119,7 +121,6 @@ function load(): State {
 }
 let state = load();
 const passwordAccounts = new Map<string, { password: string; user: User }>();
-const companyMessages = new Map<number, CompanyMessage[]>();
 const persist = () => localStorage.setItem(storageKey, JSON.stringify(state));
 const wait = () => new Promise((resolve) => setTimeout(resolve, 240));
 const requireUser = () => { if (!state.user) throw new ApiError("UNAUTHORIZED", "Нужно войти в аккаунт", 401); return state.user; };
@@ -152,6 +153,20 @@ function requireCompanyMember(companyId: number) {
   const user = requireUser(), company = state.companies.find(item => item.id === companyId);
   if (!company || company.status === "blocked" || (company.owner.id !== user.id && !companyIdsFor(user.id).includes(companyId))) throw new ApiError("FORBIDDEN", "Чат доступен только участникам компании", 403);
   return company;
+}
+function requireActiveChat(companyId: number) {
+  const company = requireCompanyMember(companyId), event = state.events.find(item => item.id === company.eventId);
+  if (!event || event.status !== "active" || Date.parse(event.endsAt || event.startsAt) <= Date.now()) throw new ApiError("EVENT_UNAVAILABLE", "Встреча завершилась или недоступна", 409);
+  return company;
+}
+function readChatPoll(companyId: number, pollId: number) {
+  const company = requireActiveChat(companyId), poll = (state.chatPolls[companyId] ?? []).find(item => item.id === pollId);
+  if (!poll) throw new ApiError("POLL_NOT_FOUND", "Опрос не найден в этой компании", 404);
+  return { company, poll };
+}
+function saveChatPoll(poll: StoredChatPoll) {
+  commitDemo({ ...state, chatPolls: { ...state.chatPolls, [poll.companyId]: (state.chatPolls[poll.companyId] ?? []).map(item => item.id === poll.id ? poll : item) } });
+  return chatPollView(poll, requireUser().id);
 }
 function requireInviteOwner(companyId: number) {
   const user = requireUser(), company = state.companies.find(item => item.id === companyId);
@@ -188,6 +203,43 @@ function syncDemoNotifications() {
   return { key, items };
 }
 export const mockApi = {
+  async listCompanyPolls(companyId: number, options: PageOptions = {}) {
+    await wait(); requireCompanyMember(companyId);
+    const items = state.chatPolls[companyId] ?? [], current = Math.max(1, options.page ?? 1), limit = Math.max(1, options.limit ?? 30);
+    return { ...page(items, current, limit), items: items.slice((current - 1) * limit, current * limit).map(item => chatPollView(item, requireUser().id)) };
+  },
+  async createCompanyPoll(companyId: number, input: ChatPollInput) {
+    await wait(); const company = requireActiveChat(companyId), user = requireUser(), data = validateChatPoll(input);
+    const now = Date.now(), event = state.events.find(item => item.id === company.eventId)!;
+    const items = state.chatPolls[companyId] ?? [], id = Math.max(now, ...items.map(item => item.id)) + 1;
+    const poll: StoredChatPoll = { id, companyId, question: data.question, options: data.options.map((label, index) => ({ id: String(index + 1), label, votes: 0 })), author: { id: user.id, firstName: user.firstName, lastName: user.lastName, avatarUrl: user.avatarUrl }, createdAt: new Date(now).toISOString(), closesAt: new Date(Math.min(now + data.durationHours * 3600000, Date.parse(event.endsAt || event.startsAt))).toISOString(), closed: false, votesByUser: {} };
+    commitDemo({ ...state, chatPolls: { ...state.chatPolls, [companyId]: [poll, ...items] } });
+    return chatPollView(poll, user.id);
+  },
+  async voteCompanyPoll(companyId: number, pollId: number, optionId: string | null) {
+    await wait(); const { poll } = readChatPoll(companyId, pollId), user = requireUser();
+    if (chatPollView(poll, user.id).closed) throw new ApiError("POLL_CLOSED", "Опрос уже завершён", 409);
+    if (optionId !== null && !poll.options.some(option => option.id === optionId)) throw new ApiError("VALIDATION_ERROR", "Такого варианта ответа нет", 400);
+    const votesByUser = { ...poll.votesByUser }; if (optionId === null) delete votesByUser[user.id]; else votesByUser[user.id] = optionId;
+    return saveChatPoll({ ...poll, votesByUser });
+  },
+  async closeCompanyPoll(companyId: number, pollId: number) {
+    await wait(); const { company, poll } = readChatPoll(companyId, pollId), user = requireUser();
+    if (company.owner.id !== user.id && poll.author.id !== user.id) throw new ApiError("FORBIDDEN", "Завершить опрос может его автор или организатор компании", 403);
+    return saveChatPoll({ ...poll, closed: true });
+  },
+  async getCompanyPinnedMessage(companyId: number): Promise<CompanyMessage | null> {
+    await wait(); requireCompanyMember(companyId);
+    return (state.chatMessages[companyId] ?? []).find(item => item.id === state.chatPins[companyId]) ?? null;
+  },
+  async setCompanyPinnedMessage(companyId: number, messageId: number | null): Promise<CompanyMessage | null> {
+    await wait(); const company = requireActiveChat(companyId);
+    if (company.owner.id !== requireUser().id) throw new ApiError("FORBIDDEN", "Сообщения закрепляет организатор компании", 403);
+    const message = (state.chatMessages[companyId] ?? []).find(item => item.id === messageId);
+    if (messageId !== null && !message) throw new ApiError("MESSAGE_NOT_FOUND", "Сообщение не найдено в этой компании", 404);
+    const chatPins = { ...state.chatPins }; if (messageId === null) delete chatPins[companyId]; else chatPins[companyId] = messageId;
+    commitDemo({ ...state, chatPins }); return message ?? null;
+  },
   async listNotifications(options: PageOptions = {}) {
     await wait(); const { items } = syncDemoNotifications();
     const current = Math.max(1, options.page ?? 1), limit = Math.max(1, options.limit ?? 30);
@@ -375,8 +427,13 @@ export const mockApi = {
   async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); const application = state.applications.find((item) => item.id === applicationId && item.companyId === companyId); if (!company || company.owner.id !== user.id || !application) throw new ApiError("FORBIDDEN", "Действие недоступно", 403); if (application.status !== "pending") throw new ApiError("APPLICATION_ALREADY_RESOLVED", "Заявка уже обработана", 409); const applicant = state.users.find((item) => item.id === application.user.id); const age = ageOf(applicant?.birthDate); if (action === "approve" && ((company.minAge !== null || company.maxAge !== null) && (age === null || (company.minAge !== null && age < company.minAge) || (company.maxAge !== null && age > company.maxAge)))) throw new ApiError("AGE_RESTRICTION", "Заявитель больше не подходит по возрастному ограничению", 403); if (action === "approve") { ensurePrivateCompanyOpen(company); ensureCoffeeRoomOpen(company); if (company.membersCount >= company.maxMembers) throw new ApiError("COMPANY_FULL", "В компании нет свободных мест", 409); if (companyIdsFor(application.user.id).includes(companyId)) throw new ApiError("ALREADY_COMPANY_MEMBER", "Пользователь уже в компании", 409); } application.status = action === "approve" ? "approved" : "rejected"; application.resolvedAt = new Date().toISOString(); if (action === "approve") { company.membersCount += 1; companyIdsFor(application.user.id).push(companyId); const event = state.events.find(item => item.id === company.eventId); if (event) event.participantsCount += 1; } persist(); return application; },
   async listMyCompanies() { const user = requireUser(); await wait(); return page(state.companies.filter((item) => companyIdsFor(user.id).includes(item.id) || item.owner.id === user.id)); },
   async listMyEvents() { const user = requireUser(); await wait(); const memberCompanyIds = companyIdsFor(user.id); const ids = new Set([...eventIdsFor(user.id), ...state.companies.filter((item) => memberCompanyIds.includes(item.id)).map((item) => item.eventId)]); return page(state.events.filter((item) => ids.has(item.id) || item.creator.id === user.id).map(item => ({ ...item, relation: item.creator.id === user.id ? ids.has(item.id) ? "creator_and_participant" as const : "creator" as const : "participant" as const }))); },
-  async listCompanyMessages(companyId: number) { await wait(); requireCompanyMember(companyId); return page(companyMessages.get(companyId) ?? []); },
-  async sendCompanyMessage(companyId: number, text: string) { const user = requireUser(); await wait(); requireCompanyMember(companyId); if (!text.trim()) throw new ApiError("VALIDATION_ERROR", "Введите сообщение", 400); const item: CompanyMessage = { id: Date.now(), companyId, author: user, text: text.trim(), createdAt: new Date().toISOString() }; companyMessages.set(companyId, [...(companyMessages.get(companyId) ?? []), item]); return item; },
+  async listCompanyMessages(companyId: number) { await wait(); requireCompanyMember(companyId); return page(state.chatMessages[companyId] ?? []); },
+  async sendCompanyMessage(companyId: number, text: string) {
+    await wait(); requireActiveChat(companyId); const user = requireUser(), value = text.trim(), items = state.chatMessages[companyId] ?? [];
+    if (!value || value.length > 2000) throw new ApiError("VALIDATION_ERROR", "Сообщение должно содержать от 1 до 2000 символов", 400);
+    const item: CompanyMessage = { id: Math.max(Date.now(), ...items.map(item => item.id)) + 1, companyId, author: { id: user.id, firstName: user.firstName, lastName: user.lastName, avatarUrl: user.avatarUrl }, text: value, createdAt: new Date().toISOString() };
+    commitDemo({ ...state, chatMessages: { ...state.chatMessages, [companyId]: [...items, item] } }); return item;
+  },
   async createReport(input: { targetType: "user" | "company" | "event"; targetId: number; reason: string; description: string | null }) { const user = requireUser(); await wait(); const item: Report = { ...input, id: Date.now(), author: user, status: "pending", resolvedBy: null, createdAt: new Date().toISOString(), resolvedAt: null }; state.reports.push(item); persist(); return item; },
   async getAdminDashboard() { await wait(); return { usersTotal: state.users.length, activeEvents: state.events.filter((item) => item.status === "active").length, pendingReports: state.reports.filter((item) => item.status === "pending").length, newRegistrations30d: state.users.filter((item) => item.id !== adminUser.id).length }; },
   async listAdminUsers(search = "") { await wait(); const query = search.toLocaleLowerCase("ru"); return page(state.users.filter((item) => `${item.firstName} ${item.lastName ?? ""}`.toLocaleLowerCase("ru").includes(query))); },

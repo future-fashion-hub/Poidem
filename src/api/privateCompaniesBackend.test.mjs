@@ -13,6 +13,27 @@ function adapter(reply) {
   return { api: exports.backendApi, calls };
 }
 const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+
+test("chat activity adapter sends scoped paginated reads and explicit vote/pin mutations", async () => {
+  const { api, calls } = adapter(() => response({}));
+  const input = { question: "Где встречаемся?", options: ["Снаружи", "Внутри"], durationHours: 24 };
+  await api.listCompanyPolls(42, { page: 3, limit: 50 }); await api.createCompanyPoll(42, input);
+  await api.voteCompanyPoll(42, 7, "2"); await api.voteCompanyPoll(42, 7, null); await api.closeCompanyPoll(42, 7);
+  await api.getCompanyPinnedMessage(42); await api.setCompanyPinnedMessage(42, 10); await api.setCompanyPinnedMessage(42, null);
+  assert.ok(calls[0].url.endsWith("/companies/42/polls?page=3&limit=50"));
+  assert.equal(calls[1].init.method, "POST"); assert.deepEqual(JSON.parse(calls[1].init.body), input);
+  assert.ok(calls[2].url.endsWith("/companies/42/polls/7/vote")); assert.equal(calls[2].init.method, "PUT");
+  assert.deepEqual(JSON.parse(calls[3].init.body), { optionId: null });
+  assert.ok(calls[4].url.endsWith("/polls/7/close")); assert.equal(calls[4].init.method, "POST");
+  assert.equal(calls[5].init.method, undefined); assert.equal(calls[6].init.method, "PUT"); assert.deepEqual(JSON.parse(calls[6].init.body), { messageId: 10 });
+  assert.equal(calls[7].init.method, "DELETE"); assert.ok(calls.every(call => call.init.credentials === "include"));
+});
+
+test("missing chat activity backend never fabricates a poll or retries a legacy route", async () => {
+  const { api, calls } = adapter(() => response({ error: { code: "NOT_FOUND", message: "Опросы пока не подключены" } }, 404));
+  await assert.rejects(api.createCompanyPoll(42, {}), error => error.status === 404 && error.message === "Опросы пока не подключены");
+  assert.equal(calls.length, 1);
+});
 test("private creation never falls back to a public route, while public creation keeps the old payload", async () => {
   const { api, calls } = adapter(() => response({ id: 42, visibility: "private" }));
   await api.createCompany(7, { name: "Закрытая", visibility: "private", joinType: "open", description: null, maxMembers: 4 });

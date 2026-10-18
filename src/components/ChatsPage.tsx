@@ -5,6 +5,11 @@ import SearchOutlined from "@mui/icons-material/SearchOutlined";
 import SendRounded from "@mui/icons-material/SendRounded";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
+import PollOutlined from "@mui/icons-material/PollOutlined";
+import PushPinOutlined from "@mui/icons-material/PushPinOutlined";
+import CloseRounded from "@mui/icons-material/CloseRounded";
+import ChatActivities from "./ChatActivities";
+import { useChatActivities } from "./useChatActivities";
 import { api, backendMode } from "../api";
 import { backendApi } from "../api/backendApi";
 import { collectPages } from "../api/pagination";
@@ -37,6 +42,8 @@ export default function ChatsPage({ userId, initialCompanyId }: { userId: number
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [mobileConversation, setMobileConversation] = useState(false);
+  const [pollsCompanyId, setPollsCompanyId] = useState<number | null>(null);
+  const activities = useChatActivities(selected?.id ?? null, userId);
   const [connection, setConnection] = useState<ConnectionState>(backendMode ? "connecting" : "demo");
   const socket = useRef<ChatConnection | null>(null);
   const conversationId = useRef<number | null>(null);
@@ -135,8 +142,10 @@ export default function ChatsPage({ userId, initialCompanyId }: { userId: number
       </aside>
       <div className="chat-conversation">
         {selected ? <>
-          <header className="chat-topbar"><button type="button" className="chat-back" aria-label="К списку чатов" onClick={() => setMobileConversation(false)}><ArrowBackRounded/></button><span className="chat-company-avatar">{selected.name.slice(0, 1).toUpperCase()}</span><div className="chat-topbar-title"><h2>{selected.name}</h2><p><span className={`chat-connection-dot ${connection === "connected" || connection === "demo" ? "is-connected" : ""}`}/>{stateLabel[connection]} · {countLabel(selected.membersCount, "members")}</p></div></header>
+          <header className="chat-topbar"><button type="button" className="chat-back" aria-label="К списку чатов" onClick={() => setMobileConversation(false)}><ArrowBackRounded/></button><span className="chat-company-avatar">{selected.name.slice(0, 1).toUpperCase()}</span><div className="chat-topbar-title"><h2>{selected.name}</h2><p><span className={`chat-connection-dot ${connection === "connected" || connection === "demo" ? "is-connected" : ""}`}/>{stateLabel[connection]} · {countLabel(selected.membersCount, "members")}</p></div><button type="button" className="chat-activities-toggle" aria-label="Опросы компании" aria-expanded={pollsCompanyId === selected.id} aria-controls={`chat-polls-${selected.id}`} onClick={() => { const open = pollsCompanyId !== selected.id; setPollsCompanyId(open ? selected.id : null); if (open && scrollArea.current) { followLatest.current = false; scrollArea.current.scrollTop = 0; } }}><PollOutlined aria-hidden="true"/><span>Опросы</span></button></header>
+          {activities.pinned && <aside className="chat-pinned" aria-label="Закреплённое сообщение"><PushPinOutlined aria-hidden="true"/><div className="chat-pinned-copy"><strong>Закреплено · {activities.pinned.author.firstName}</strong><p>{activities.pinned.text}</p></div>{selected.owner.id === userId && <button type="button" className="chat-pin-dismiss" disabled={activities.busy} aria-label="Открепить сообщение" onClick={() => void activities.pin(null)}><CloseRounded aria-hidden="true"/></button>}</aside>}
           <div ref={scrollArea} className="chat-messages" onScroll={event => { const area = event.currentTarget; followLatest.current = area.scrollHeight - area.scrollTop - area.clientHeight < 90; }}>
+            {pollsCompanyId === selected.id && <ChatActivities key={`${userId}:${selected.id}`} company={selected} userId={userId} activities={activities}/>}
             {historyLoading && <p className="chat-history-loading" role="status">Загружаем переписку…</p>}
             {!historyLoading && !messages.length && <div className="chat-empty"><span className="chat-empty-icon"><ForumOutlined fontSize="large"/></span><h3>Знакомство начинается с «привет»</h3><p>Договоритесь о встрече, задайте вопрос или просто представьтесь своей компании.</p></div>}
             {messages.map((message, index) => {
@@ -144,10 +153,11 @@ export default function ChatsPage({ userId, initialCompanyId }: { userId: number
               const day = dayLabel(message.createdAt);
               return <Fragment key={message.id}>
                 {(index === 0 || day !== dayLabel(messages[index - 1].createdAt)) && <div className="chat-day"><span>{day}</span></div>}
-                <article className={`chat-message ${mine ? "is-own" : ""}`}><p className="chat-message-author">{mine ? "Вы" : `${message.author.firstName} ${message.author.lastName ?? ""}`}</p><p className="chat-message-text">{message.text}</p><time dateTime={message.createdAt}>{messageTime(message.createdAt)}</time></article>
+                <article className={`chat-message ${mine ? "is-own" : ""}`}><p className="chat-message-author">{mine ? "Вы" : `${message.author.firstName} ${message.author.lastName ?? ""}`}</p><p className="chat-message-text">{message.text}</p><time dateTime={message.createdAt}>{messageTime(message.createdAt)}</time>{selected.owner.id === userId && <button type="button" className="chat-pin-action" disabled={activities.busy} aria-pressed={activities.pinned?.id === message.id} onClick={() => void activities.pin(activities.pinned?.id === message.id ? null : message.id)}><PushPinOutlined aria-hidden="true"/>{activities.pinned?.id === message.id ? "Открепить" : "Закрепить"}</button>}</article>
               </Fragment>;
             })}
           </div>
+          {activities.error && <p className="chat-error chat-activity-error" role="alert">Опросы и закрепление: {activities.error}<button type="button" disabled={activities.busy} onClick={() => void activities.refresh()}>Повторить</button></p>}
           {error && <p className="chat-error" role="alert">{error}{backendMode && connection !== "connected" && <button type="button" onClick={() => socket.current?.retry()}>Повторить подключение</button>}</p>}
           <form onSubmit={send} className="chat-composer"><label className="sr-only" htmlFor="company-chat-message">Сообщение компании</label><textarea id="company-chat-message" rows={2} value={text} maxLength={2000} onChange={event => setDrafts(previous => ({ ...previous, [selected.id]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={canSend ? "Напишите своей компании…" : "Напишите сообщение — оно останется здесь до подключения…"}/><button type="submit" disabled={!canSend || !text.trim()} aria-label="Отправить сообщение"><SendRounded/></button><div className="chat-composer-hint"><span>Enter — отправить · Shift + Enter — новая строка</span><span>{text.length}/2000</span></div></form>
         </> : <div className="chat-empty"><span className="chat-empty-icon"><ForumOutlined fontSize="large"/></span><h2>Ваши разговоры — здесь</h2><p>Выберите компанию слева, чтобы открыть переписку.</p>{error && <p className="chat-error" role="alert">{error}</p>}</div>}
