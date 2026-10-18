@@ -25,6 +25,7 @@ import type {
 import SiteSelect from "./SiteSelect"
 import SiteDatePicker from "./SiteDatePicker"
 import EventIcon from "./EventIcon"
+import CompanyInviteLink from "./CompanyInviteLink"
 
 type Tab = "profile" | "events" | "companies" | "applications"
 type Props = {
@@ -232,6 +233,7 @@ function CompanyCard({
         </button>
       </div>
       {company.description && <p className="plans-company-description">{company.description}</p>}
+      {company.status !== "blocked" && <CompanyInviteLink company={company}/>}
       <div className="plans-capacity" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, company.membersCount / Math.max(1, company.maxMembers) * 100))}%` }}/></div>
       <div className="mt-4 border-t border-[#edf1ea] pt-4">
         {owner ? (

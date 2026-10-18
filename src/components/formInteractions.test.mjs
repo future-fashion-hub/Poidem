@@ -35,7 +35,7 @@ function componentHarness(path, modules = {}, environment = {}) {
   };
   const jsx = (type, props) => ({ type, props });
   const window = {
-    location: { hash: environment.hash ?? "#feed", search: "" },
+    location: { hash: environment.hash ?? "#feed", search: "", origin: "https://poidem.test", pathname: "/" },
     setTimeout: callback => { timers.push(callback); return timers.length; },
     clearTimeout: () => {},
     matchMedia: () => ({ matches: false }),
@@ -45,15 +45,15 @@ function componentHarness(path, modules = {}, environment = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText;
   const componentCode = code + (environment.component ? `\nexports.default = ${environment.component};` : "");
-  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", "document", componentCode)(name => {
+  new Function("require", "exports", "window", "localStorage", "setTimeout", "clearTimeout", "document", "navigator", componentCode)(name => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
     if (name in modules) return modules[name];
     if (name === "react-dom") return { createPortal: node => node };
-    const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts", "../api/types": "../api/types.ts", "../api/coffee": "../api/coffee.ts" };
+    const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts", "../api/types": "../api/types.ts", "../api/coffee": "../api/coffee.ts", "./api/companyInvite": "../api/companyInvite.ts", "../api/companyInvite": "../api/companyInvite.ts" };
     if (name in utilities) return pureModule(utilities[name]);
     return { __esModule: true, default: name };
-  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {} });
+  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {} }, environment.navigator ?? {});
   return {
     render(props) { cursor = 0; effects.length = 0; return exports.default(props); },
     runEffects() { return effects.map(effect => effect()).filter(Boolean); },
@@ -70,6 +70,77 @@ function find(node, predicate) {
 }
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test("company invitation survives guest registration and profile completion without auto-joining", async () => {
+  const user = { id: 1, firstName: "Анна", isProfileComplete: false };
+  const harness = componentHarness("../App.tsx", { "./api": { api: { registerWithPassword: async () => ({ user }) } } }, { hash: "#invite/42" });
+  let tree = harness.render();
+  const invitation = getComponent(tree, "Lazy");
+  assert.equal(invitation.props.companyId, 42); invitation.props.onAuth();
+  getComponent(harness.render(), "AuthModal").props.onRegister();
+  await getComponent(harness.render(), "./components/RegisterModal").props.onPasswordRegister("user", "password");
+  tree = harness.render();
+  const profile = getComponent(tree, "./components/Onboarding"); assert.ok(profile);
+  assert.equal(getComponent(tree, "EventDrawer"), undefined);
+  profile.props.onComplete({ ...user, isProfileComplete: true });
+  tree = harness.render();
+  assert.equal(getComponent(tree, "Lazy").props.companyId, 42);
+  assert.equal(getComponent(tree, "./components/UserDashboard"), undefined);
+});
+
+for (const scenario of ["guest", "open", "request", "pending", "member", "full", "closed", "expired", "missing", "error"]) test(`company invitation: ${scenario}`, async () => {
+  let joins = 0, applications = 0, auth = 0, chat, finish;
+  const company = { id: 42, eventId: 7, name: "Наша компания", owner: { id: 2, firstName: "Маша" }, membersCount: scenario === "full" ? 4 : 1, maxMembers: 4, status: scenario === "closed" ? "closed" : "active", joinType: ["request", "pending"].includes(scenario) ? "request" : "open", minAge: null, maxAge: null };
+  const event = { id: 7, title: "Событие", startsAt: "2099-11-01T18:00:00Z", endsAt: scenario === "expired" ? "2000-01-01T19:00:00Z" : "2099-11-01T19:00:00Z", status: "active", cityId: 1, locationName: "Кофейня" };
+  const harness = componentHarness("./CompanyInvitePage.tsx", {
+    "../api": { api: {
+      getCompany: async () => { if (scenario === "missing") throw new (pureModule("../api/types.ts").ApiError)("COMPANY_NOT_FOUND", "Нет компании", 404); return company; },
+      getEvent: async () => event,
+      listMyCompanies: async () => ({ items: scenario === "member" ? [company] : [] }),
+      getMyCompanyApplication: async () => ({ status: scenario === "pending" ? "pending" : "cancelled" }),
+      joinOpenCompany: () => { joins++; if (scenario === "error") return Promise.reject(new Error("Сервер: места закончились")); return new Promise(resolve => { finish = () => { company.membersCount++; resolve(); }; }); },
+      createCompanyApplication: async () => { applications++; },
+    } },
+    "../api/pagination": { collectPages: fetch => fetch({}) },
+    "./useEventClock": { useEventClock: () => Date.now() },
+  });
+  const props = { companyId: 42, user: scenario === "guest" ? null : { id: 1 }, authLoading: false, cities: [], onAuth: () => auth++, onChat: id => { chat = id; }, onChanged() {} };
+  harness.render(props); harness.runEffectContaining("void load"); await flush();
+  let tree = harness.render(props);
+  assert.equal(joins + applications, 0, "reading an invitation never joins automatically");
+  if (["expired", "missing"].includes(scenario)) { assert.ok(find(tree, node => node.props?.role === "alert")); return; }
+  const button = find(tree, node => node.type === "button" && node.props?.className === "plans-button plans-button--primary");
+  if (scenario === "pending") { assert.equal(button, undefined); return; }
+  assert.ok(button);
+  if (["full", "closed"].includes(scenario)) { assert.equal(button.props.disabled, true); return; }
+  button.props.onClick();
+  if (scenario === "open") { button.props.onClick(); assert.equal(joins, 1); finish(); }
+  await flush(); tree = harness.render(props);
+  if (scenario === "guest") { assert.equal(auth, 1); assert.equal(joins + applications, 0); }
+  if (scenario === "request") { assert.equal(applications, 1); assert.equal(joins, 0); assert.equal(find(tree, node => node.type === "button" && node.props?.className === "plans-button plans-button--primary"), undefined); }
+  if (["member", "open"].includes(scenario)) {
+    if (scenario === "open") find(tree, node => node.type === "button" && node.props?.className === "plans-button plans-button--primary").props.onClick();
+    assert.equal(chat, 42);
+    if (scenario === "open") assert.equal(find(tree, node => node.props?.className === "company-invite-facts").props.children[2].props.children[1], 2, "mock mutation is not counted twice");
+  }
+  if (scenario === "error") assert.equal(find(tree, node => node.props?.role === "alert").props.children, "Сервер: места закончились");
+});
+
+test("invitation share copies the clean URL and exposes a manual fallback", async () => {
+  let copied;
+  const company = { id: 42, name: "Наша компания" };
+  const harness = componentHarness("./CompanyInviteLink.tsx", {}, { navigator: { clipboard: { writeText: async value => { copied = value; } } } });
+  let tree = harness.render({ company });
+  find(tree, node => node.type === "button").props.onClick(); tree = harness.render({ company });
+  find(tree, node => node.props?.className === "company-invite-share-actions").props.children[0].props.onClick(); await flush();
+  assert.equal(copied, "https://poidem.test/#invite/42");
+  assert.ok(find(harness.render({ company }), node => node.props?.role === "status"));
+  const fallback = componentHarness("./CompanyInviteLink.tsx");
+  find(fallback.render({ company }), node => node.type === "button").props.onClick();
+  tree = fallback.render({ company });
+  find(tree, node => node.props?.className === "company-invite-share-actions").props.children[1].props.onClick(); await flush();
+  assert.match(find(fallback.render({ company }), node => node.props?.role === "status").props.children, /вручную/);
+});
 
 test("coffee is a navigation section, not an action in the home hero", () => {
   const hero = componentHarness("../App.tsx", {}, { component: "HomeHero" }).render({ onNavigate() {}, paused: false });

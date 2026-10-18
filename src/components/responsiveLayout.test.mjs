@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import postcss from "postcss";
 
-const sheets = ["../index.css", "../mobile.css", "./coffee.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
+const sheets = ["../index.css", "../mobile.css", "./coffee.css", "./companyInvite.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
+
+for (const width of [320, 375, 402, 670, 1440]) test(`invitation page and share controls fit at ${width}px`, () => {
+  assert.equal(declarations(".company-invite-page", width)["min-width"], "0");
+  assert.equal(declarations(".company-invite-body", width)["overflow-wrap"], "anywhere");
+  assert.equal(declarations(".company-invite-share-panel input", width)["min-width"], "0");
+  assert.equal(declarations(".company-invite-share-panel input", width)["font-size"], "16px");
+  assert.equal(declarations(".company-invite-share-actions", width)["flex-wrap"], "wrap");
+  assert.equal(declarations(".company-invite-share-actions button", width)["min-height"], "44px");
+});
 
 for (const width of [320, 375, 670, 768, 1024, 1440]) test(`coffee navigation stays aligned at ${width}px`, () => {
   assert.equal(declarations(".site-section-nav", width).display, "flex");

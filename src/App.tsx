@@ -32,16 +32,19 @@ import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
 import LocalCafeOutlined from "@mui/icons-material/LocalCafeOutlined";
 import NearbyEvents from "./components/NearbyEvents";
 import { getNearbyLocation } from "./api/nearbyPermissions";
+import { inviteCompanyId } from "./api/companyInvite";
 
 const Globe = lazy(() => import("./components/Globe"));
 const CoffeePage = lazy(() => import("./components/CoffeePage"));
+const CompanyInvitePage = lazy(() => import("./components/CompanyInvitePage"));
 
-type View = "home" | "feed" | "map" | "profile" | "chats" | "coffee";
+type View = "home" | "feed" | "map" | "profile" | "chats" | "coffee" | "invite";
 type Notice = { kind: "success" | "error"; text: string } | null;
 type IconName = "search" | "pin" | "users" | "close" | "arrow" | "check" | "plus" | "sliders";
 const publicViews: View[] = ["home", "feed", "map", "profile", "chats", "coffee"];
 
 function currentViewFromUrl(): View {
+  if (/^#\/?invite(?:\/|$)/.test(window.location.hash)) return "invite";
   const value = window.location.hash.replace(/^#\/?/, "") as View;
   return publicViews.includes(value) ? value : "home";
 }
@@ -97,6 +100,8 @@ export default function App() {
     };
   }, []);
   const [view, setView] = useState<View>(currentViewFromUrl);
+  const [inviteId, setInviteId] = useState(() => inviteCompanyId(window.location.hash));
+  const resumeInvite = useRef(0);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [allEvents, setEvents] = useState<Event[]>([]);
@@ -220,15 +225,15 @@ export default function App() {
   }, [modalOpen]);
 
   useEffect(() => {
-    const syncViewFromUrl = () => { setView(currentViewFromUrl()); setFavoritesOpen(false); setNearbyOpen(false); };
+    const syncViewFromUrl = () => { const next = currentViewFromUrl(); setInviteId(inviteCompanyId(window.location.hash)); if (next !== "invite") resumeInvite.current = 0; setView(next); setFavoritesOpen(false); setNearbyOpen(false); };
     window.addEventListener("hashchange", syncViewFromUrl);
     return () => window.removeEventListener("hashchange", syncViewFromUrl);
   }, []);
 
   useEffect(() => {
-    const hash = view === "home" ? "" : `#${view}`;
+    const hash = view === "home" ? "" : view === "invite" ? `#invite/${inviteId}` : `#${view}`;
     if (window.location.hash !== hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
-  }, [view]);
+  }, [view, inviteId]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -351,11 +356,12 @@ export default function App() {
 
   return <div className="app-shell min-h-screen bg-[#f5f7f2] text-[#102318]">
     <div className="app-background" inert={modalOpen ? true : undefined}>
-    <Header user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
+    <Header user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { resumeInvite.current = 0; setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
     <PageErrorBoundary key={`${view}:${user?.id ?? "guest"}`}>
+    {!onboardingRequired && view === "invite" && <Suspense fallback={<main className="company-invite-page" role="status">Загружаем приглашение…</main>}><CompanyInvitePage key={inviteId} companyId={inviteId} user={user} authLoading={authLoading} cities={cities} onAuth={() => { resumeInvite.current = inviteId; requireAuth(() => undefined); }} onChat={companyId => { resumeInvite.current = 0; setChatCompanyId(companyId); setView("chats"); }} onChanged={() => { setEventVersion(version => version + 1); void refreshParticipation().catch(handleError); }}/></Suspense>}
     {!onboardingRequired && view === "coffee" && <Suspense fallback={<main className="mx-auto max-w-[1240px] px-5 py-12" role="status">Загружаем кофе-тайм…</main>}><CoffeePage user={user} cities={cities} onAuth={() => requireAuth(() => undefined)} onPlans={() => { setCoffeeModalOpen(false); setView("profile"); }} onChat={companyId => { setChatCompanyId(companyId); setCoffeeModalOpen(false); setView("chats"); }} onChanged={() => { setEventVersion(version => version + 1); void refreshParticipation().catch(handleError); }} onModalChange={setCoffeeModalOpen}/></Suspense>}
     {!user && (view === "chats" || view === "profile") && <main className="mx-auto max-w-2xl px-5 py-16"><h1 className="text-2xl font-extrabold">{authLoading ? "Загружаем ваш аккаунт…" : "Войдите в аккаунт"}</h1>{!authLoading && <><p className="mt-3 text-[#52705a]">Этот раздел доступен после входа.</p><button onClick={() => setAuthOpen(true)} className="cta-lime mt-6 rounded-xl px-5 py-3 font-bold">Войти</button></>}</main>}
-    {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
+    {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); const id = resumeInvite.current || (view === "invite" ? inviteId : 0); resumeInvite.current = 0; if (id) { setInviteId(id); setView("invite"); } else setView("profile"); }} /> : null}
     {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} paused={modalOpen} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
     {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
     {!onboardingRequired && view === "profile" && user ? <UserDashboard revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
@@ -375,7 +381,7 @@ export default function App() {
 
 function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogout }: { user: User | null; view: View; onboarding: boolean; onNavigate: (view: View) => void; onAuth: () => void; onRegister: () => void; onLogout: () => void }) {
   const [menu, setMenu] = useState(false);
-  const navigation: Array<[View, string]> = [["home", "Главная"], ["feed", "Лента"], ["map", "Карта"]];
+  const navigation: Array<[Exclude<View, "invite">, string]> = [["home", "Главная"], ["feed", "Лента"], ["map", "Карта"]];
   if (user && !onboarding) navigation.push(["profile", "Мои планы"], ["chats", "Мои чаты"]);
   const navIcons = { home: HomeOutlined, feed: StyleOutlined, map: MapOutlined, profile: CalendarMonthOutlined, chats: ChatBubbleOutline, coffee: LocalCafeOutlined };
 
