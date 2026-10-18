@@ -5,6 +5,17 @@ import postcss from "postcss";
 
 const sheets = ["../index.css", "../mobile.css", "./coffee.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
 
+for (const width of [320, 375, 670, 768, 1024, 1440]) test(`coffee navigation stays aligned at ${width}px`, () => {
+  assert.equal(declarations(".site-section-nav", width).display, width < 1024 ? "flex" : "none");
+  if (width < 1024) {
+    const tab = declarations(".site-section-nav > a", width);
+    assert.equal(tab.display, "inline-flex");
+    assert.equal(tab["align-items"], "center");
+    assert.equal(tab["min-height"], "48px");
+    assert.equal(declarations(".site-section-nav > a > svg", width).width, "20px");
+  }
+});
+
 // Check our breakpoint rules without launching a browser. This deliberately
 // checks exact selectors, not a general-purpose computed-style implementation.
 function declarations(selector, width) {

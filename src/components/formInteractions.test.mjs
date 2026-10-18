@@ -71,6 +71,18 @@ function find(node, predicate) {
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
+test("coffee is a navigation section, not an action in the home hero", () => {
+  const hero = componentHarness("../App.tsx", {}, { component: "HomeHero" }).render({ onNavigate() {}, paused: false });
+  assert.equal(find(hero, node => node.props?.className?.includes("coffee-home-link")), undefined);
+  const harness = componentHarness("../App.tsx", {}, { component: "Header" });
+  const props = { user: null, view: "coffee", onboarding: false, onNavigate() {}, onAuth() {}, onRegister() {}, onLogout() {} };
+  const nav = find(harness.render(props), node => node.props?.className === "site-section-nav");
+  const coffee = find(nav, node => node.props?.href === "#coffee");
+  assert.ok(coffee); assert.equal(coffee.props["aria-current"], "page");
+  assert.equal(find(nav, node => node.props?.href === "#home").props["aria-current"], undefined);
+  assert.equal(find(harness.render({ ...props, onboarding: true }), node => node.props?.className === "site-section-nav"), undefined);
+});
+
 for (const requestedExists of [true, false]) test(`coffee chat opens only the requested company, including closed recruitment (exists=${requestedExists})`, async () => {
   const companies = [{ id: 7, name: "Другой чат", status: "active", membersCount: 2, eventId: 70 }, { id: 8, name: "Наш кофе", status: "closed", membersCount: 4, eventId: 80 }];
   const harness = componentHarness("./ChatsPage.tsx", {
