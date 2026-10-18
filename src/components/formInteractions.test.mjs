@@ -50,7 +50,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
     if (name in modules) return modules[name];
     if (name === "react-dom") return { createPortal: node => node };
-    const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts" };
+    const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts", "../api/types": "../api/types.ts", "../api/coffee": "../api/coffee.ts" };
     if (name in utilities) return pureModule(utilities[name]);
     return { __esModule: true, default: name };
   }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {} });
@@ -70,6 +70,81 @@ function find(node, predicate) {
 }
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+for (const requestedExists of [true, false]) test(`coffee chat opens only the requested company, including closed recruitment (exists=${requestedExists})`, async () => {
+  const companies = [{ id: 7, name: "Другой чат", status: "active", membersCount: 2, eventId: 70 }, { id: 8, name: "Наш кофе", status: "closed", membersCount: 4, eventId: 80 }];
+  const harness = componentHarness("./ChatsPage.tsx", {
+    "../api": { backendMode: false, api: { listMyCompanies: async () => ({ items: companies }) } },
+    "../api/pagination": { collectPages: fetch => fetch({}) },
+    "../api/companyAvailability": { companyEventAvailable: () => true, loadCompanyEvents: async () => ({}) },
+    "./useEventClock": { useEventClock: () => Date.now() },
+  });
+  const props = { userId: 1, initialCompanyId: requestedExists ? 8 : 99 };
+  harness.render(props); harness.runEffectContaining("listMyCompanies"); await flush();
+  const tree = harness.render(props);
+  const title = find(tree, node => node.props?.className === "chat-topbar-title");
+  if (requestedExists) assert.equal(find(title, node => node.type === "h2").props.children, "Наш кофе");
+  else assert.equal(title, undefined);
+});
+
+test("coffee route is public and does not remove the guest login flow", () => {
+  const harness = componentHarness("../App.tsx", {}, { hash: "#coffee" });
+  const tree = harness.render();
+  const coffee = getComponent(tree, "Lazy");
+  assert.ok(coffee); assert.equal(coffee.props.user, null);
+  coffee.props.onAuth();
+  assert.ok(getComponent(harness.render(), "AuthModal"));
+});
+
+test("coffee creation validates fields and prevents duplicate submissions", async () => {
+  let mutations = 0, finish;
+  const harness = componentHarness("./CoffeeCreateModal.tsx", { "../api": { api: { createCoffeeMeeting: () => { mutations++; return new Promise(resolve => { finish = resolve; }); } } } });
+  let created;
+  const props = { cities: [{ id: 1, name: "Москва" }], cityId: 1, onClose() {}, onCreated: meeting => { created = meeting; } };
+  const form = () => getComponent(harness.render(props), "./CoffeeDialog").props.children(() => {});
+  let tree = form();
+  await tree.props.onSubmit({ preventDefault() {} });
+  assert.equal(mutations, 0);
+  tree = form(); assert.ok(find(tree, node => node.props?.role === "alert"));
+  for (const [id, value] of [["coffee-title", "Кофе и книги"], ["coffee-description", "Давайте поговорим о хороших книгах за кофе"], ["coffee-locationName", "Кофейня у парка"]]) {
+    find(tree, node => node.props?.id === id).props.onChange({ target: { value } }); tree = form();
+  }
+  find(tree, node => node.props?.id === "coffee-startsAt").props.onChange("2099-11-01T18:00");
+  tree = form();
+  const first = tree.props.onSubmit({ preventDefault() {} });
+  const second = tree.props.onSubmit({ preventDefault() {} });
+  assert.equal(mutations, 1);
+  tree = form(); assert.equal(tree.props["aria-busy"], true);
+  finish({ id: 77 }); await Promise.all([first, second]);
+  assert.equal(created.id, 77);
+});
+
+for (const guest of [true, false]) test(`coffee detail joins explicitly, updates state, and opens the right company chat (guest=${guest})`, async () => {
+  const meeting = { id: 55, eventId: 55, companyId: 555, topic: "chat", participation: "none", event: { id: 55, title: "Кофе и книги", description: "Поговорим за кофе", cityId: 1, startsAt: "2099-11-01T18:00:00Z", endsAt: "2099-11-01T19:00:00Z", status: "active", participantsCount: 1, locationName: "Кофейня" }, company: { id: 555, owner: { id: 2, firstName: "Маша", avatarUrl: null }, status: "active", membersCount: 1, maxMembers: 4, joinType: "open" } };
+  let joins = 0, auth = 0, chat, changed = 0;
+  const harness = componentHarness("./CoffeePage.tsx", {
+    "../api": { backendMode: false, api: { listCoffeeMeetings: async () => ({ items: [meeting] }), joinOpenCompany: async () => { joins++; } } },
+    "../api/pagination": { collectPages: fetch => fetch({}) },
+  });
+  const props = { user: guest ? null : { id: 1, firstName: "Анна" }, cities: [{ id: 1, name: "Москва" }], onAuth: () => auth++, onChat: id => { chat = id; }, onPlans() {}, onChanged: () => changed++, onModalChange() {} };
+  let tree = harness.render(props);
+  harness.runEffectContaining("void load"); await flush();
+  tree = harness.render(props);
+  find(tree, node => node.props?.className === "coffee-card-open").props.onClick();
+  tree = harness.render(props);
+  let detail = getComponent(tree, "./CoffeeDialog").props.children(() => {});
+  const join = find(detail, node => node.type === "button" && node.props.className?.includes("coffee-button--primary"));
+  await join.props.onClick(); await flush();
+  tree = harness.render(props);
+  if (guest) { assert.equal(auth, 1); assert.equal(joins, 0); assert.equal(getComponent(tree, "./CoffeeDialog"), undefined); }
+  else {
+    assert.equal(joins, 1); assert.equal(changed, 1);
+    detail = getComponent(tree, "./CoffeeDialog").props.children(() => {});
+    const chatButton = find(detail, node => node.type === "button" && node.props.children?.[1] === "Открыть чат");
+    assert.ok(chatButton); chatButton.props.onClick(); assert.equal(chat, 555);
+    assert.equal(find(tree, node => node.props?.className === "coffee-seat-count").props.children[1], 2);
+  }
+});
 
 for (const readyBeforeRef of [true, false]) test(`globe always locks zoom and restores its intended scale (readyBeforeRef=${readyBeforeRef})`, () => {
   const harness = componentHarness("./Globe.tsx", {

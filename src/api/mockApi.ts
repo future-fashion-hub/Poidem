@@ -1,6 +1,9 @@
 import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 import { createMockMapEvents, extraMapCities, relocateMockMapEvent, refreshMockMapEventContent } from "./mockMapEvents";
+import type { CoffeeFilters, CoffeeInput, CoffeeMeeting, CoffeeRecord } from "./coffeeTypes";
+import { createCoffeeSeeds } from "./mockCoffee";
+import { coffeeCover, validateCoffee } from "./coffee";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
@@ -59,7 +62,7 @@ const initialCompanies = [
   company(5, 4, "Первые пять километров", "Темп 6:30–7:00, идеально для первого старта.", 6, 4, "open", people[2]),
 ];
 
-type State = { user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
+type State = { coffeeRecords: CoffeeRecord[]; coffeeSeedVersion: number; user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
 const storageKey = "poydem_mock_v1";
 const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [interests[0], interests[2], interests[6]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00", gender: "male", birthDate: "1997-05-18" };
 const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00", gender: null, birthDate: null };
@@ -76,7 +79,8 @@ const initialReports: Report[] = [
   { id: 3, targetType: "user", targetId: 3, reason: "Оскорбления", description: "Жалоба рассмотрена, нарушение не подтвердилось.", author: people[1], status: "rejected", resolvedBy: adminUser, createdAt: "2026-09-18T18:40:00+03:00", resolvedAt: "2026-09-19T09:15:00+03:00" },
 ];
 const mapEventsSeedVersion = 3;
-const fresh = (): State & { mapEventsSeedVersion: number } => ({ mapEventsSeedVersion, user: null, users: initialUsers, events: initialEvents, companies: initialCompanies, applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
+const initialCoffee = createCoffeeSeeds(people);
+const fresh = (): State & { mapEventsSeedVersion: number } => ({ mapEventsSeedVersion, coffeeSeedVersion: 1, coffeeRecords: [...initialCoffee.records], user: null, users: initialUsers, events: [...initialEvents, ...initialCoffee.events.map(event => ({ ...event }))], companies: [...initialCompanies, ...initialCoffee.companies.map(company => ({ ...company }))], applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
     const saved = localStorage.getItem(storageKey);
@@ -97,8 +101,14 @@ function load(): State {
       const existingIds = new Set(events.map(event => event.id));
       events.push(...additionalMapEvents.filter(event => !existingIds.has(event.id)));
     }
-    const restored = { ...fresh(), ...parsed, mapEventsSeedVersion, events, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports };
-    if ((parsed.mapEventsSeedVersion ?? 0) < mapEventsSeedVersion) {
+    const companies = [...(parsed.companies ?? initialCompanies)];
+    if (!parsed.coffeeSeedVersion) {
+      const eventIds = new Set(events.map(event => event.id)), companyIds = new Set(companies.map(company => company.id));
+      events.push(...initialCoffee.events.filter(event => !eventIds.has(event.id)));
+      companies.push(...initialCoffee.companies.filter(company => !companyIds.has(company.id)));
+    }
+    const restored = { ...fresh(), ...parsed, mapEventsSeedVersion, coffeeSeedVersion: 1, events, companies, users: parsed.users ?? initialUsers, reports: parsed.reports ?? initialReports };
+    if ((parsed.mapEventsSeedVersion ?? 0) < mapEventsSeedVersion || !parsed.coffeeSeedVersion) {
       try { localStorage.setItem(storageKey, JSON.stringify(restored)); } catch { /* Preserve loaded user data if storage is full. */ }
     }
     return restored;
@@ -115,7 +125,56 @@ const eventIdsFor = (userId: number) => state.soloEventMemberships[String(userId
 const ageOf = (birthDate?: string | null) => { if (!birthDate) return null; const today = new Date(); const born = new Date(birthDate); let age = today.getFullYear() - born.getFullYear(); if (today < new Date(today.getFullYear(), born.getMonth(), born.getDate())) age -= 1; return age; };
 const page = <T,>(items: T[], current = 1, limit = 20): Paginated<T> => ({ items, pagination: { page: current, limit, total: items.length, totalPages: items.length ? Math.ceil(items.length / limit) : 0 } });
 
+function coffeeMeeting(record: CoffeeRecord): CoffeeMeeting | null {
+  const event = state.events.find(item => item.id === record.eventId), company = state.companies.find(item => item.id === record.companyId);
+  if (!event || !company) return null;
+  const userId = state.user?.id;
+  const participation = userId === company.owner.id ? "owner" : userId && companyIdsFor(userId).includes(company.id) ? "member"
+    : state.applications.some(item => item.companyId === company.id && item.user.id === userId && item.status === "pending") ? "pending" : "none";
+  return { ...record, event: { ...event }, company: { ...company }, participation };
+}
+
+function ensureCoffeeRoomOpen(company: Company) {
+  if (!state.coffeeRecords.some(record => record.companyId === company.id)) return;
+  const event = state.events.find(item => item.id === company.eventId);
+  if (!event || event.status !== "active" || Date.parse(event.endsAt ?? event.startsAt) <= Date.now()) throw new ApiError("EVENT_UNAVAILABLE", "Встреча уже завершилась или недоступна", 409);
+  if (company.status !== "active") throw new ApiError("COMPANY_CLOSED", "Набор в компанию закрыт", 409);
+  if (company.membersCount >= company.maxMembers) throw new ApiError("COMPANY_FULL", "В компании нет свободных мест", 409);
+}
+
 export const mockApi = {
+  async listCoffeeMeetings(filters: CoffeeFilters = {}, options: PageOptions = {}) {
+    await wait();
+    const items = state.coffeeRecords.map(coffeeMeeting).filter((item): item is CoffeeMeeting => Boolean(item))
+      .filter(item => (item.event.status === "active" || (item.participation === "owner" && item.event.status === "pending")) && item.company.status !== "blocked"
+        && Date.parse(item.event.endsAt ?? item.event.startsAt) > Date.now() && (!filters.cityId || item.event.cityId === filters.cityId) && (!filters.topic || item.topic === filters.topic))
+      .sort((a, b) => Date.parse(a.event.startsAt) - Date.parse(b.event.startsAt));
+    const current = Math.max(1, options.page ?? 1), limit = Math.max(1, options.limit ?? 20);
+    return { ...page(items, current, limit), items: items.slice((current - 1) * limit, current * limit) };
+  },
+  async getCoffeeMeeting(id: number) {
+    await wait();
+    const record = state.coffeeRecords.find(item => item.id === id), item = record && coffeeMeeting(record);
+    if (!item || item.company.status === "blocked" || (item.event.status !== "active" && item.participation !== "owner")) throw new ApiError("COFFEE_NOT_FOUND", "Встреча недоступна", 404);
+    return item;
+  },
+  async createCoffeeMeeting(input: CoffeeInput) {
+    const user = requireUser(); await wait();
+    if (!user.isProfileComplete) throw new ApiError("PROFILE_INCOMPLETE", "Сначала заполните профиль", 403);
+    const errors = validateCoffee(input, cities.map(city => city.id));
+    if (Object.keys(errors).length) throw new ApiError("VALIDATION_ERROR", Object.values(errors)[0]!, 400, { fields: errors });
+    const id = Math.max(Date.now(), ...state.events.map(item => item.id), ...state.companies.map(item => item.id)) + 1;
+    const createdAt = new Date().toISOString(), description = input.description.trim(), title = input.title.trim();
+    const event: Event = { id, title, description, categoryId: 5, cityId: input.cityId, startsAt: input.startsAt, endsAt: new Date(Date.parse(input.startsAt) + input.duration * 60000).toISOString(), locationName: input.locationName.trim(), address: input.address.trim() || null, location: null, imageUrl: coffeeCover, status: "active", moderationReason: null, participantsCount: 1, companiesCount: 1, creator: user, createdAt, updatedAt: createdAt };
+    const group = company(id, id, title, description, input.maxMembers, 1, input.joinType, user);
+    group.createdAt = createdAt; group.updatedAt = createdAt;
+    group.rules = "Напитки каждый оплачивает самостоятельно. Если планы изменились, предупредите компанию.";
+    const record: CoffeeRecord = { id, eventId: id, companyId: id, topic: input.topic };
+    const next: State = { ...state, events: [...state.events, event], companies: [...state.companies, group], coffeeRecords: [...state.coffeeRecords, record], companyMemberships: { ...state.companyMemberships, [user.id]: [...companyIdsFor(user.id), id] } };
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { throw new ApiError("STORAGE_FULL", "Не удалось сохранить встречу. Освободите место в браузере и попробуйте снова.", 507); }
+    state = next;
+    return coffeeMeeting(record)!;
+  },
   async dictionaries() { await wait(); return { cities, categories, interests }; },
   async login(_provider: "google" | "telegram" | "vk") { await wait(); state.user = demoUser; persist(); return { accessToken: `mock.${demoUser.id}.${Date.now()}`, user: demoUser }; },
   async register(_provider: "google" | "telegram" | "vk") { await wait(); const user: User = { ...demoUser, id: 100, firstName: "", lastName: null, city: null, about: null, interests: [], isProfileComplete: false }; state.user = user; persist(); return { accessToken: `mock.${user.id}.${Date.now()}`, user }; },
@@ -132,7 +191,8 @@ export const mockApi = {
   async getCurrentUser() { await wait(); return requireUser(); },
   async getUserProfile(id: number) { await wait(); const item = state.users.find((user) => user.id === id); if (!item) throw new ApiError("USER_NOT_FOUND", "Пользователь не найден", 404); return item; },
   async listEvents(filters: EventFilters = {}, _options: PageOptions = {}) {
-    await wait(); let result = state.events.filter((item) => item.status === "active");
+    const coffeeEventIds = new Set(state.coffeeRecords.map(item => item.eventId));
+    await wait(); let result = state.events.filter((item) => item.status === "active" && !coffeeEventIds.has(item.id));
     if (filters.search) { const query = filters.search.toLocaleLowerCase("ru"); result = result.filter((item) => `${item.title} ${item.description ?? ""} ${item.locationName}`.toLocaleLowerCase("ru").includes(query)); }
     if (filters.cityId) result = result.filter((item) => item.cityId === filters.cityId);
     if (filters.categoryId) result = result.filter((item) => item.categoryId === filters.categoryId);
@@ -178,13 +238,14 @@ export const mockApi = {
   async updateCompany(companyId: number, input: CompanyUpdate) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id !== user.id) throw new ApiError("NOT_COMPANY_OWNER", "Только владелец может редактировать компанию", 403); if (input.maxMembers !== undefined && input.maxMembers < company.membersCount) throw new ApiError("COMPANY_CAPACITY_BELOW_MEMBERS", "Лимит не может быть меньше числа участников", 409); if (input.minAge !== undefined && input.maxAge !== undefined && input.minAge !== null && input.maxAge !== null && input.minAge > input.maxAge) throw new ApiError("VALIDATION_ERROR", "Некорректный возрастной диапазон", 400); Object.assign(company, input, { updatedAt: new Date().toISOString() }); persist(); return company; },
   async deleteCompany(companyId: number) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id !== user.id) throw new ApiError("NOT_COMPANY_OWNER", "Только владелец может удалить компанию", 403); state.companies = state.companies.filter((item) => item.id !== companyId); Object.values(state.companyMemberships).forEach((ids) => { const index = ids.indexOf(companyId); if (index >= 0) ids.splice(index, 1); }); state.applications.forEach((item) => { if (item.companyId === companyId && item.status === "pending") { item.status = "cancelled"; item.resolutionReason = "EVENT_DELETED"; item.resolvedAt = new Date().toISOString(); } }); persist(); },
   async listCompanyMembers(companyId: number) { const company = await this.getCompany(companyId); const ids = new Set<number>([company.owner.id]); state.users.forEach((item) => { if (companyIdsFor(item.id).includes(companyId)) ids.add(item.id); }); return page(state.users.filter((item) => ids.has(item.id)).map(({ id, firstName, lastName, avatarUrl }) => ({ id, firstName, lastName, avatarUrl }))); },
-  async leaveCompany(companyId: number) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id === user.id) throw new ApiError("OWNER_CANNOT_LEAVE", "Владелец не может выйти из компании", 409); const ids = companyIdsFor(user.id); const index = ids.indexOf(companyId); if (index < 0) throw new ApiError("NOT_COMPANY_MEMBER", "Вы не состоите в компании", 409); ids.splice(index, 1); company.membersCount = Math.max(1, company.membersCount - 1); persist(); },
-  async removeCompanyMember(companyId: number, userId: number) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id !== user.id) throw new ApiError("NOT_COMPANY_OWNER", "Только владелец может исключать участников", 403); if (company.owner.id === userId) throw new ApiError("OWNER_CANNOT_BE_REMOVED", "Нельзя исключить владельца", 409); const ids = companyIdsFor(userId); const index = ids.indexOf(companyId); if (index < 0) throw new ApiError("NOT_COMPANY_MEMBER", "Пользователь не состоит в компании", 409); ids.splice(index, 1); company.membersCount = Math.max(1, company.membersCount - 1); persist(); },
+  async leaveCompany(companyId: number) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id === user.id) throw new ApiError("OWNER_CANNOT_LEAVE", "Владелец не может выйти из компании", 409); const ids = companyIdsFor(user.id); const index = ids.indexOf(companyId); if (index < 0) throw new ApiError("NOT_COMPANY_MEMBER", "Вы не состоите в компании", 409); ids.splice(index, 1); company.membersCount = Math.max(1, company.membersCount - 1); const event = state.events.find(item => item.id === company.eventId); if (event) event.participantsCount = Math.max(1, event.participantsCount - 1); persist(); },
+  async removeCompanyMember(companyId: number, userId: number) { const user = requireUser(); const company = await this.getCompany(companyId); if (company.owner.id !== user.id) throw new ApiError("NOT_COMPANY_OWNER", "Только владелец может исключать участников", 403); if (company.owner.id === userId) throw new ApiError("OWNER_CANNOT_BE_REMOVED", "Нельзя исключить владельца", 409); const ids = companyIdsFor(userId); const index = ids.indexOf(companyId); if (index < 0) throw new ApiError("NOT_COMPANY_MEMBER", "Пользователь не состоит в компании", 409); ids.splice(index, 1); company.membersCount = Math.max(1, company.membersCount - 1); const event = state.events.find(item => item.id === company.eventId); if (event) event.participantsCount = Math.max(1, event.participantsCount - 1); persist(); },
   async joinOpenCompany(companyId: number) {
     const user = requireUser(); await wait(); const item = state.companies.find((entry) => entry.id === companyId);
     if (!item) throw new ApiError("COMPANY_NOT_FOUND", "Компания не найдена", 404);
+    ensureCoffeeRoomOpen(item);
     if (item.joinType !== "open" || item.status !== "active") throw new ApiError("COMPANY_CLOSED", "Компания принимает только заявки", 409);
-    const age = ageOf(user.birthDate); if ((item.minAge !== undefined || item.maxAge !== undefined) && (age === null || (item.minAge != null && age < item.minAge) || (item.maxAge != null && age > item.maxAge))) throw new ApiError("AGE_RESTRICTION", "Вы не подходите по возрастному ограничению этой компании", 403);
+    const age = ageOf(user.birthDate); if ((item.minAge != null || item.maxAge != null) && (age === null || (item.minAge != null && age < item.minAge) || (item.maxAge != null && age > item.maxAge))) throw new ApiError("AGE_RESTRICTION", "Вы не подходите по возрастному ограничению этой компании", 403);
     if (item.membersCount >= item.maxMembers) throw new ApiError("COMPANY_FULL", "В компании нет свободных мест", 409);
     if (companyIdsFor(user.id).includes(companyId)) throw new ApiError("ALREADY_COMPANY_MEMBER", "Вы уже в этой компании", 409);
     companyIdsFor(user.id).push(companyId); item.membersCount += 1; const event = state.events.find((entry) => entry.id === item.eventId); if (event) event.participantsCount += 1;
@@ -195,8 +256,10 @@ export const mockApi = {
   async createCompanyApplication(companyId: number, message: string | null) {
     const user = requireUser(); await wait(); const item = state.companies.find((entry) => entry.id === companyId);
     if (!item) throw new ApiError("COMPANY_NOT_FOUND", "Компания не найдена", 404);
+    ensureCoffeeRoomOpen(item);
+    if (item.owner.id === user.id || companyIdsFor(user.id).includes(companyId)) throw new ApiError("ALREADY_COMPANY_MEMBER", "Вы уже в этой компании", 409);
     const age = ageOf(user.birthDate); if ((item.minAge !== null || item.maxAge !== null) && (age === null || (item.minAge !== null && age < item.minAge) || (item.maxAge !== null && age > item.maxAge))) throw new ApiError("AGE_RESTRICTION", "Вы не подходите по возрастному ограничению этой компании", 403);
-    if (state.applications.some((entry) => entry.companyId === companyId && entry.status === "pending")) throw new ApiError("APPLICATION_ALREADY_EXISTS", "Заявка уже отправлена", 409);
+    if (state.applications.some((entry) => entry.companyId === companyId && entry.user.id === user.id && entry.status === "pending")) throw new ApiError("APPLICATION_ALREADY_EXISTS", "Заявка уже отправлена", 409);
     const application: Application = { id: Date.now(), companyId, user, message, status: "pending", resolutionReason: null, createdAt: new Date().toISOString(), resolvedAt: null }; state.applications.push(application); persist(); return application;
   },
   async getMyCompanyApplication(companyId: number) { const user = requireUser(); await this.getCompany(companyId); const item = [...state.applications].filter((entry) => entry.companyId === companyId && entry.user.id === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]; if (!item) throw new ApiError("APPLICATION_NOT_FOUND", "Заявка не найдена", 404); return item; },
@@ -210,8 +273,8 @@ export const mockApi = {
   async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { const user = requireUser(); await wait(); state.user = { ...user, ...input, city: input.cityId ? cities.find((city) => city.id === input.cityId) ?? user.city : user.city, interests: input.interestIds ? interests.filter((interest) => input.interestIds?.includes(interest.id)) : user.interests, isProfileComplete: Boolean((input.firstName ?? user.firstName) && (input.cityId ?? user.city?.id)) }; state.users = state.users.map((item) => item.id === state.user?.id ? state.user as User : item); persist(); return state.user; },
   async listMyApplications() { await wait(); requireUser(); return page([...state.applications].reverse()); },
   async listCompanyApplications(companyId: number) { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); if (!company || company.owner.id !== user.id) throw new ApiError("FORBIDDEN", "Только создатель компании может просматривать заявки", 403); return page(state.applications.filter((item) => item.companyId === companyId)); },
-  async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); const application = state.applications.find((item) => item.id === applicationId && item.companyId === companyId); if (!company || company.owner.id !== user.id || !application) throw new ApiError("FORBIDDEN", "Действие недоступно", 403); if (application.status !== "pending") throw new ApiError("APPLICATION_ALREADY_RESOLVED", "Заявка уже обработана", 409); const applicant = state.users.find((item) => item.id === application.user.id); const age = ageOf(applicant?.birthDate); if (action === "approve" && ((company.minAge !== null || company.maxAge !== null) && (age === null || (company.minAge !== null && age < company.minAge) || (company.maxAge !== null && age > company.maxAge)))) throw new ApiError("AGE_RESTRICTION", "Заявитель больше не подходит по возрастному ограничению", 403); application.status = action === "approve" ? "approved" : "rejected"; application.resolvedAt = new Date().toISOString(); if (action === "approve") { company.membersCount += 1; companyIdsFor(application.user.id).push(companyId); } persist(); return application; },
-  async listMyCompanies() { const user = requireUser(); await wait(); return page(state.companies.filter((item) => companyIdsFor(user.id).includes(item.id))); },
+  async resolveCompanyApplication(companyId: number, applicationId: number, action: "approve" | "reject") { const user = requireUser(); await wait(); const company = state.companies.find((item) => item.id === companyId); const application = state.applications.find((item) => item.id === applicationId && item.companyId === companyId); if (!company || company.owner.id !== user.id || !application) throw new ApiError("FORBIDDEN", "Действие недоступно", 403); if (application.status !== "pending") throw new ApiError("APPLICATION_ALREADY_RESOLVED", "Заявка уже обработана", 409); const applicant = state.users.find((item) => item.id === application.user.id); const age = ageOf(applicant?.birthDate); if (action === "approve" && ((company.minAge !== null || company.maxAge !== null) && (age === null || (company.minAge !== null && age < company.minAge) || (company.maxAge !== null && age > company.maxAge)))) throw new ApiError("AGE_RESTRICTION", "Заявитель больше не подходит по возрастному ограничению", 403); if (action === "approve") { ensureCoffeeRoomOpen(company); if (company.membersCount >= company.maxMembers) throw new ApiError("COMPANY_FULL", "В компании нет свободных мест", 409); if (companyIdsFor(application.user.id).includes(companyId)) throw new ApiError("ALREADY_COMPANY_MEMBER", "Пользователь уже в компании", 409); } application.status = action === "approve" ? "approved" : "rejected"; application.resolvedAt = new Date().toISOString(); if (action === "approve") { company.membersCount += 1; companyIdsFor(application.user.id).push(companyId); const event = state.events.find(item => item.id === company.eventId); if (event) event.participantsCount += 1; } persist(); return application; },
+  async listMyCompanies() { const user = requireUser(); await wait(); return page(state.companies.filter((item) => companyIdsFor(user.id).includes(item.id) || item.owner.id === user.id)); },
   async listMyEvents() { const user = requireUser(); await wait(); const memberCompanyIds = companyIdsFor(user.id); const ids = new Set([...eventIdsFor(user.id), ...state.companies.filter((item) => memberCompanyIds.includes(item.id)).map((item) => item.eventId)]); return page(state.events.filter((item) => ids.has(item.id) || item.creator.id === user.id).map(item => ({ ...item, relation: item.creator.id === user.id ? ids.has(item.id) ? "creator_and_participant" as const : "creator" as const : "participant" as const }))); },
   async listCompanyMessages(companyId: number) { await wait(); requireUser(); return page(companyMessages.get(companyId) ?? []); },
   async sendCompanyMessage(companyId: number, text: string) { const user = requireUser(); await wait(); if (!text.trim()) throw new ApiError("VALIDATION_ERROR", "Введите сообщение", 400); const item: CompanyMessage = { id: Date.now(), companyId, author: user, text: text.trim(), createdAt: new Date().toISOString() }; companyMessages.set(companyId, [...(companyMessages.get(companyId) ?? []), item]); return item; },

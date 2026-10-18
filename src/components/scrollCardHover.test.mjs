@@ -48,7 +48,7 @@ function harness(enabled = true, supported = true) {
       return media;
     } },
     { body: { querySelectorAll: selector => {
-      assert.equal(selector, ".event-card, .atlas-card, .plans-event, .favorites-card, .nearby-card");
+      assert.equal(selector, ".event-card, .atlas-card, .plans-event, .favorites-card, .nearby-card, .coffee-card");
       return cards;
     } } },
     supported ? IntersectionObserver : undefined, MutationObserver,

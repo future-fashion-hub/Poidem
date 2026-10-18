@@ -4,6 +4,7 @@
 .plans-event-participation { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 0 18px 14px; font-size: 12px; color: #426627; }
 .plans-event-participation button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); cursor: pointer; }
 @media (max-width: 1023px) {
+  .site-nav-link[data-view="coffee"] { display: none; }
   .atlas-mobile-filter-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; font-size: 14px; font-weight: 800; }
   .atlas-mobile-filter-toggle > span { margin-left: auto; color: var(--ink-soft); font-size: 12px; }
   .atlas-mobile-filter-toggle > b { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 8px; background: var(--lime); }
@@ -11,6 +12,7 @@
   .atlas-filter-controls[data-expanded="true"] { padding-top: 16px; }
 }
 @media (max-width: 767px) {
+  .coffee-home-link { grid-column: 1 / -1; }
   .atlas-page.map-page { padding-top: 16px; }
   .atlas-page .atlas-heading { margin-bottom: 14px; }
   .atlas-page .atlas-heading h1 { font-size: 27px; margin-top: 4px; }

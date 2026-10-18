@@ -1,4 +1,4 @@
-const cardSelector = ".event-card, .atlas-card, .plans-event, .favorites-card, .nearby-card";
+const cardSelector = ".event-card, .atlas-card, .plans-event, .favorites-card, .nearby-card, .coffee-card";
 const activeClass = "is-scroll-hover";
 
 // One observer for all lists, including asynchronously loaded cards and portals.

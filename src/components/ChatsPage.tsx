@@ -22,13 +22,13 @@ const stateLabel: Record<ConnectionState, string> = {
 const messageTime = (date: string) => new Date(date).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 const dayLabel = (date: string) => new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 
-export default function ChatsPage({ userId }: { userId: number }) {
+export default function ChatsPage({ userId, initialCompanyId }: { userId: number; initialCompanyId?: number }) {
   const [allCompanies, setCompanies] = useState<Company[]>([]);
   const [companyEvents, setCompanyEvents] = useState<CompanyEventIndex>({});
   const now = useEventClock(companyEvents);
-  const companies = allCompanies.filter(company => company.status === "active" && companyEventAvailable(company, companyEvents, now));
+  const companies = allCompanies.filter(company => company.status !== "blocked" && companyEventAvailable(company, companyEvents, now));
   const [selectedCompany, setSelected] = useState<Company | null>(null);
-  const selected = companies.find(company => company.id === selectedCompany?.id) ?? companies[0] ?? null;
+  const selected = companies.find(company => company.id === selectedCompany?.id) ?? (initialCompanyId ? null : companies[0] ?? null);
   const [messages, setMessages] = useState<CompanyMessage[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [search, setSearch] = useState("");
@@ -51,12 +51,15 @@ export default function ChatsPage({ userId }: { userId: number }) {
     collectPages(options => backendMode ? backendApi.listMyCompanies(options) : api.listMyCompanies()).then(async result => {
       const events = await loadCompanyEvents(result.items, [], id => api.getEvent(id));
       if (!alive) return;
-      const available = result.items.filter(item => item.status === "active");
-      setCompanyEvents(events); setCompanies(available); setSelected(available[0] ?? null);
+      const available = result.items.filter(item => item.status !== "blocked" && companyEventAvailable(item, events, Date.now()));
+      const requested = available.find(item => item.id === initialCompanyId);
+      setCompanyEvents(events); setCompanies(available); setSelected(requested ?? (initialCompanyId ? null : available[0] ?? null));
+      if (requested) setMobileConversation(true);
+      else if (initialCompanyId) setError("Эта компания больше недоступна. Выберите другой чат.");
     }).catch(caught => { if (alive) setError(caught instanceof Error ? caught.message : "Не удалось загрузить чаты"); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, []);
+  }, [userId, initialCompanyId]);
   useEffect(() => { if (!selected) setMobileConversation(false); }, [selected?.id]);
   useEffect(() => {
     if (scrollArea.current && followLatest.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight;

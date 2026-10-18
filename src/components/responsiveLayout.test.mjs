@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import postcss from "postcss";
 
-const sheets = ["../index.css", "../mobile.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
+const sheets = ["../index.css", "../mobile.css", "./coffee.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
 
 // Check our breakpoint rules without launching a browser. This deliberately
 // checks exact selectors, not a general-purpose computed-style implementation.
@@ -74,4 +74,13 @@ for (const width of [320, 393, 402, 440, 767]) test(`event popup can shrink and 
   const text = declarations(".event-modal-facts strong", width);
   assert.equal(text["white-space"], "normal");
   assert.equal(text["overflow-wrap"], "anywhere");
+});
+
+for (const width of [320, 375, 402, 768, 1440]) test(`coffee cards, form and dialog adapt at ${width}px`, () => {
+  assert.equal(declarations(".coffee-dialog", width)["min-width"], "0");
+  assert.equal(declarations(".coffee-dialog", width)["max-width"], "100%");
+  assert.equal(declarations(".coffee-form-field > input", width)["font-size"], "16px");
+  assert.equal(declarations(".coffee-form-fields", width)["grid-template-columns"], width < 768 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))");
+  assert.equal(declarations(".coffee-grid", width)["grid-template-columns"], width < 768 ? "minmax(0, 1fr)" : width < 1024 ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))");
+  if (width < 1024) assert.equal(declarations('.site-nav-link[data-view="coffee"]', width).display, "none", "keep the existing five-item mobile tab bar");
 });

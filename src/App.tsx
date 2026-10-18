@@ -29,15 +29,17 @@ import StyleOutlined from "@mui/icons-material/StyleOutlined";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
 import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
+import LocalCafeOutlined from "@mui/icons-material/LocalCafeOutlined";
 import NearbyEvents from "./components/NearbyEvents";
 import { getNearbyLocation } from "./api/nearbyPermissions";
 
 const Globe = lazy(() => import("./components/Globe"));
+const CoffeePage = lazy(() => import("./components/CoffeePage"));
 
-type View = "home" | "feed" | "map" | "profile" | "chats";
+type View = "home" | "feed" | "map" | "profile" | "chats" | "coffee";
 type Notice = { kind: "success" | "error"; text: string } | null;
 type IconName = "search" | "pin" | "users" | "close" | "arrow" | "check" | "plus" | "sliders";
-const publicViews: View[] = ["home", "feed", "map", "profile", "chats"];
+const publicViews: View[] = ["home", "feed", "map", "profile", "chats", "coffee"];
 
 function currentViewFromUrl(): View {
   const value = window.location.hash.replace(/^#\/?/, "") as View;
@@ -129,10 +131,12 @@ export default function App() {
   const [eventCreateOpen, setEventCreateOpen] = useState(false);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [nearbyOpen, setNearbyOpen] = useState(false);
+  const [coffeeModalOpen, setCoffeeModalOpen] = useState(false);
+  const [chatCompanyId, setChatCompanyId] = useState<number | undefined>(undefined);
   const [notice, setNotice] = useState<Notice>(null);
   const onboardingRequired = Boolean(user && !user.isProfileComplete);
   const secondaryModalOpen = authOpen || registerOpen || companyOpen || eventCreateOpen;
-  const modalOpen = !onboardingRequired && Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen);
+  const modalOpen = !onboardingRequired && Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen || coffeeModalOpen);
 
   const flash = (next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 3200); };
   const handleError = (error: unknown) => {
@@ -349,12 +353,13 @@ export default function App() {
     <div className="app-background" inert={modalOpen ? true : undefined}>
     <Header user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
     <PageErrorBoundary key={`${view}:${user?.id ?? "guest"}`}>
+    {!onboardingRequired && view === "coffee" && <Suspense fallback={<main className="mx-auto max-w-[1240px] px-5 py-12" role="status">Загружаем кофе-тайм…</main>}><CoffeePage user={user} cities={cities} onAuth={() => requireAuth(() => undefined)} onPlans={() => { setCoffeeModalOpen(false); setView("profile"); }} onChat={companyId => { setChatCompanyId(companyId); setCoffeeModalOpen(false); setView("chats"); }} onChanged={() => { setEventVersion(version => version + 1); void refreshParticipation().catch(handleError); }} onModalChange={setCoffeeModalOpen}/></Suspense>}
     {!user && (view === "chats" || view === "profile") && <main className="mx-auto max-w-2xl px-5 py-16"><h1 className="text-2xl font-extrabold">{authLoading ? "Загружаем ваш аккаунт…" : "Войдите в аккаунт"}</h1>{!authLoading && <><p className="mt-3 text-[#52705a]">Этот раздел доступен после входа.</p><button onClick={() => setAuthOpen(true)} className="cta-lime mt-6 rounded-xl px-5 py-3 font-bold">Войти</button></>}</main>}
     {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); setView("profile"); }} /> : null}
     {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} paused={modalOpen} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
     {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
     {!onboardingRequired && view === "profile" && user ? <UserDashboard revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
-    {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} /> : null}
+    {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} initialCompanyId={chatCompanyId} /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onCreate={() => requireAuth(() => setEventCreateOpen(true))} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
     {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent} isPublicEvent={isPublicEvent}/>}
     </PageErrorBoundary>
@@ -371,14 +376,15 @@ export default function App() {
 function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogout }: { user: User | null; view: View; onboarding: boolean; onNavigate: (view: View) => void; onAuth: () => void; onRegister: () => void; onLogout: () => void }) {
   const [menu, setMenu] = useState(false);
   const navigation: Array<[View, string]> = [["home", "Главная"], ["feed", "Лента"], ["map", "Карта"]];
+  if (!onboarding) navigation.push(["coffee", "Кофе-тайм"]);
   if (user && !onboarding) navigation.push(["profile", "Мои планы"], ["chats", "Мои чаты"]);
-  const navIcons = { home: HomeOutlined, feed: StyleOutlined, map: MapOutlined, profile: CalendarMonthOutlined, chats: ChatBubbleOutline };
+  const navIcons = { home: HomeOutlined, feed: StyleOutlined, map: MapOutlined, profile: CalendarMonthOutlined, chats: ChatBubbleOutline, coffee: LocalCafeOutlined };
 
   return <header className="site-header sticky top-0 z-40">
     <div className="site-header-inner mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-5 lg:px-8">
       <BrandLogo onClick={() => onNavigate("home")}/>
       <nav aria-label="Основная навигация" className="site-nav flex items-center gap-1 rounded-2xl p-1">
-        {navigation.map(([target, label]) => { const NavIcon = navIcons[target]; return <button key={target} aria-current={view === target ? "page" : undefined} onClick={() => { setMenu(false); onNavigate(target); }} className={`site-nav-link rounded-xl px-4 py-2 text-sm font-bold ${view === target ? "site-nav-link--active" : ""}`}><NavIcon className="site-nav-icon" aria-hidden="true"/><span>{label}</span></button>; })}
+        {navigation.map(([target, label]) => { const NavIcon = navIcons[target]; return <button key={target} data-view={target} aria-current={view === target ? "page" : undefined} onClick={() => { setMenu(false); onNavigate(target); }} className={`site-nav-link rounded-xl px-4 py-2 text-sm font-bold ${view === target ? "site-nav-link--active" : ""}`}><NavIcon className="site-nav-icon" aria-hidden="true"/><span>{label}</span></button>; })}
       </nav>
       {user && !onboarding ? <div className="flex items-center gap-2">
         {user.role === "admin" ? <button onClick={() => window.location.assign("/admin#/")} className="hidden rounded-xl bg-[#102318] px-4 py-2.5 text-sm font-extrabold text-[#dff8a1] shadow-sm transition hover:bg-[#24462d] sm:block">Админка</button> : null}
@@ -392,7 +398,7 @@ function HomeHero({ onNavigate, paused }: { onNavigate: (view: View) => void; pa
   return <main><section className="hero-section relative">
     <div className="hero-grain absolute inset-0"/><div className="hero-orb absolute -right-24 -top-36 h-[460px] w-[460px] rounded-full"/>
     <div className="relative mx-auto grid max-w-[1240px] items-center gap-8 px-5 py-6 sm:py-8 lg:grid-cols-[1.04fr_.96fr] lg:px-8 lg:py-12">
-      <div className="hero-copy relative z-10 px-1 py-8 sm:px-5 lg:py-12"><p className="hero-kicker mb-7 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-[#bdf238]"/>Новая афиша вашего города</p><h1 className="max-w-2xl text-4xl font-black leading-[.98] tracking-[-.068em] text-white sm:text-5xl lg:text-[4.7rem]">Не просто <span className="hero-accent">куда.</span><br/>А с кем пойти.</h1><p className="mt-7 max-w-lg text-base leading-7 text-[#c2d2c4]">Собираем людей вокруг настоящих планов: от концерта во дворе до выставки, о которой хочется говорить всю ночь.</p><div className="mt-9 flex flex-wrap gap-3"><a href="#events" className="cta-lime rounded-xl px-5 py-3.5 text-sm font-extrabold">Найти событие</a><button onClick={() => onNavigate("map")} className="hero-ghost rounded-xl px-5 py-3.5 text-sm font-extrabold">Смотреть на карте</button></div><div className="hero-proof mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-[#b7c9b9]"><span>Реальные люди</span><span>Живые события</span><span>Свои компании</span></div></div>
+      <div className="hero-copy relative z-10 px-1 py-8 sm:px-5 lg:py-12"><p className="hero-kicker mb-7 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-[#bdf238]"/>Новая афиша вашего города</p><h1 className="max-w-2xl text-4xl font-black leading-[.98] tracking-[-.068em] text-white sm:text-5xl lg:text-[4.7rem]">Не просто <span className="hero-accent">куда.</span><br/>А с кем пойти.</h1><p className="mt-7 max-w-lg text-base leading-7 text-[#c2d2c4]">Собираем людей вокруг настоящих планов: от концерта во дворе до выставки, о которой хочется говорить всю ночь.</p><div className="mt-9 flex flex-wrap gap-3"><a href="#events" className="cta-lime rounded-xl px-5 py-3.5 text-sm font-extrabold">Найти событие</a><button onClick={() => onNavigate("map")} className="hero-ghost rounded-xl px-5 py-3.5 text-sm font-extrabold">Смотреть на карте</button><button type="button" onClick={() => onNavigate("coffee")} className="coffee-home-link hero-ghost inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold"><LocalCafeOutlined fontSize="small" aria-hidden="true"/>Познакомиться за кофе</button></div><div className="hero-proof mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-[#b7c9b9]"><span>Реальные люди</span><span>Живые события</span><span>Свои компании</span></div></div>
       <div className="hero-globe relative min-h-[355px] sm:min-h-[410px]"><Suspense fallback={<div className="globe-loading" role="status" aria-label="Загружаем глобус"/>}><Globe paused={paused}/></Suspense></div>
     </div>
   </section></main>;

@@ -1,5 +1,6 @@
 import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
+import type { CoffeeFilters, CoffeeInput, CoffeeMeeting } from "./coffeeTypes";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
 const API_PREFIX = `${BACKEND_URL}/api/v1`;
@@ -65,6 +66,9 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 const page = <T>(items: T[]): Paginated<T> => ({ items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: items.length ? 1 : 0 } });
 
 export const backendApi = {
+  async listCoffeeMeetings(filters: CoffeeFilters = {}, options: PageOptions = {}) { return request<Paginated<CoffeeMeeting>>(`/coffee-meetings${query({ ...filters, page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
+  async getCoffeeMeeting(id: number) { return request<CoffeeMeeting>(`/coffee-meetings/${id}`); },
+  async createCoffeeMeeting(input: CoffeeInput) { return request<CoffeeMeeting>("/coffee-meetings", { method: "POST", body: JSON.stringify(input) }); },
   async dictionaries() {
     const [cities, interests, categories] = await Promise.all([
       request<DictionaryItem[]>("/cities"), request<DictionaryItem[]>("/interests"), request<DictionaryItem[]>("/event-categories"),

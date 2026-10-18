@@ -58,6 +58,7 @@ test("existing snapshots gain the new events without losing edited events, users
   const favoritesByUser = { 777: [{ eventId: 9000, savedAt: "2026-10-17" }] };
   const storage = demo(JSON.stringify({ user, events: [...old, custom, baseline.find(event => event.id === 2001)], favoritesByUser }));
   const migrated = JSON.parse(storage.snapshot());
+  migrated.events = migrated.events.filter(event => !migrated.coffeeRecords?.some(record => record.eventId === event.id));
   assert.deepEqual(migrated.user, user);
   assert.deepEqual(migrated.favoritesByUser, favoritesByUser);
   assert.equal(migrated.events.length, 27);
@@ -99,6 +100,7 @@ test("version-one snapshots relocate the old Moscow seeds but preserve user edit
   const favoritesByUser = { 777: [{ eventId: 2004, savedAt: "2026-10-17" }] };
   const storage = demo(JSON.stringify({ mapEventsSeedVersion: 1, events: [oldMoscowEvent, editedVenue], favoritesByUser }));
   const migrated = JSON.parse(storage.snapshot());
+  migrated.events = migrated.events.filter(event => !migrated.coffeeRecords?.some(record => record.eventId === event.id));
   assert.equal(migrated.mapEventsSeedVersion, 3);
   assert.equal(migrated.events.length, 2, "deleted demo events must not come back");
   const moved = migrated.events.find(event => event.id === 2004);
@@ -120,6 +122,7 @@ test("content upgrade replaces repeated seed photos and short descriptions witho
   const favoritesByUser = { 777: [{ eventId: 2001, savedAt: "2026-10-17" }] };
   const storage = demo(JSON.stringify({ mapEventsSeedVersion: 2, events: [old, customText, customPhoto], favoritesByUser }));
   const migrated = JSON.parse(storage.snapshot());
+  migrated.events = migrated.events.filter(event => !migrated.coffeeRecords?.some(record => record.eventId === event.id));
   assert.equal(migrated.mapEventsSeedVersion, 3);
   assert.equal(migrated.events.length, 3);
   assert.deepEqual(migrated.favoritesByUser, favoritesByUser);
