@@ -77,9 +77,14 @@ test("coffee is a navigation section, not an action in the home hero", () => {
   const harness = componentHarness("../App.tsx", {}, { component: "Header" });
   const props = { user: null, view: "coffee", onboarding: false, onNavigate() {}, onAuth() {}, onRegister() {}, onLogout() {} };
   const nav = find(harness.render(props), node => node.props?.className === "site-section-nav");
+  assert.equal(find(harness.render(props), node => node.props?.["data-view"] === "coffee"), undefined);
+  assert.equal(find(harness.render(props), node => node.props?.["data-view"] === "map").props["aria-current"], "page");
   const coffee = find(nav, node => node.props?.href === "#coffee");
   assert.ok(coffee); assert.equal(coffee.props["aria-current"], "page");
-  assert.equal(find(nav, node => node.props?.href === "#home").props["aria-current"], undefined);
+  assert.equal(find(nav, node => node.props?.href === "#map").props["aria-current"], undefined);
+  const mapNav = find(harness.render({ ...props, view: "map" }), node => node.props?.className === "site-section-nav");
+  assert.equal(find(mapNav, node => node.props?.href === "#map").props["aria-current"], "page");
+  for (const view of ["home", "feed", "profile", "chats"]) assert.equal(find(harness.render({ ...props, view }), node => node.props?.className === "site-section-nav"), undefined);
   assert.equal(find(harness.render({ ...props, onboarding: true }), node => node.props?.className === "site-section-nav"), undefined);
 });
 

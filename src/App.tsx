@@ -376,7 +376,6 @@ export default function App() {
 function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogout }: { user: User | null; view: View; onboarding: boolean; onNavigate: (view: View) => void; onAuth: () => void; onRegister: () => void; onLogout: () => void }) {
   const [menu, setMenu] = useState(false);
   const navigation: Array<[View, string]> = [["home", "Главная"], ["feed", "Лента"], ["map", "Карта"]];
-  if (!onboarding) navigation.push(["coffee", "Кофе-тайм"]);
   if (user && !onboarding) navigation.push(["profile", "Мои планы"], ["chats", "Мои чаты"]);
   const navIcons = { home: HomeOutlined, feed: StyleOutlined, map: MapOutlined, profile: CalendarMonthOutlined, chats: ChatBubbleOutline, coffee: LocalCafeOutlined };
 
@@ -384,14 +383,14 @@ function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogo
     <div className="site-header-inner mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-5 lg:px-8">
       <BrandLogo onClick={() => onNavigate("home")}/>
       <nav aria-label="Основная навигация" className="site-nav flex items-center gap-1 rounded-2xl p-1">
-        {navigation.map(([target, label]) => { const NavIcon = navIcons[target]; return <button key={target} data-view={target} aria-current={view === target ? "page" : undefined} onClick={() => { setMenu(false); onNavigate(target); }} className={`site-nav-link rounded-xl px-4 py-2 text-sm font-bold ${view === target ? "site-nav-link--active" : ""}`}><NavIcon className="site-nav-icon" aria-hidden="true"/><span>{label}</span></button>; })}
+        {navigation.map(([target, label]) => { const NavIcon = navIcons[target]; return <button key={target} data-view={target} aria-current={view === target || (view === "coffee" && target === "map") ? "page" : undefined} onClick={() => { setMenu(false); onNavigate(target); }} className={`site-nav-link rounded-xl px-4 py-2 text-sm font-bold ${view === target ? "site-nav-link--active" : ""}`}><NavIcon className="site-nav-icon" aria-hidden="true"/><span>{label}</span></button>; })}
       </nav>
       {user && !onboarding ? <div className="flex items-center gap-2">
         {user.role === "admin" ? <button onClick={() => window.location.assign("/admin#/")} className="hidden rounded-xl bg-[#102318] px-4 py-2.5 text-sm font-extrabold text-[#dff8a1] shadow-sm transition hover:bg-[#24462d] sm:block">Админка</button> : null}
         <div className="relative"><button onClick={() => setMenu(!menu)} className="profile-trigger flex items-center gap-3 rounded-2xl py-1.5 pl-2 pr-3"><span className="grid h-8 w-8 place-items-center overflow-hidden rounded-xl bg-[#dff8a1] text-xs font-extrabold">{user.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-full w-full object-cover"/> : initials(user)}</span><span className="hidden text-sm font-semibold sm:block">{user.firstName}</span></button>{menu && <div className="menu-popover absolute right-0 top-12 w-44 rounded-2xl p-2 shadow-xl"><button onClick={() => { onNavigate("profile"); setMenu(false); }} className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-[#f1f5ee]">Профиль</button>{user.role === "admin" ? <button onClick={() => window.location.assign("/admin#/")} className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-[#f1f5ee]">Админ-панель</button> : null}<button onClick={onLogout} className="w-full rounded-xl px-3 py-2 text-left text-sm text-[#9e3128] hover:bg-[#fff1ef]">Выйти</button></div>}</div>
       </div> : !user ? <div className="site-auth-actions flex items-center gap-2"><button onClick={onAuth} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[#24462d]">Войти</button><button onClick={onRegister} className="cta-lime rounded-xl px-4 py-2.5 text-sm font-extrabold text-[#102318]"><span className="site-register-full">Создать аккаунт</span><span className="site-register-short">Регистрация</span></button></div> : <div className={`site-header-actions-placeholder${user.role === "admin" ? " site-header-actions-placeholder--admin" : ""}`} aria-hidden="true" inert />}
     </div>
-    {!onboarding && <nav className="site-section-nav" aria-label="Разделы сайта"><a href="#home" aria-current={view !== "coffee" ? "page" : undefined} onClick={() => setMenu(false)}><CalendarMonthOutlined aria-hidden="true"/><span>События</span></a><a href="#coffee" aria-current={view === "coffee" ? "page" : undefined} onClick={() => setMenu(false)}><LocalCafeOutlined aria-hidden="true"/><span>Кофе-тайм</span></a></nav>}
+    {!onboarding && (view === "map" || view === "coffee") && <nav className="site-section-nav" aria-label="Разделы карты"><a href="#map" aria-current={view === "map" ? "page" : undefined} onClick={() => setMenu(false)}><MapOutlined aria-hidden="true"/><span>События</span></a><a href="#coffee" aria-current={view === "coffee" ? "page" : undefined} onClick={() => setMenu(false)}><LocalCafeOutlined aria-hidden="true"/><span>Кофе-тайм</span></a></nav>}
   </header>;
 }
 
