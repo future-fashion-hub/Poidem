@@ -12,6 +12,7 @@ for (const width of [320, 375, 402, 670, 1440]) test(`invitation page and share 
   assert.equal(declarations(".company-invite-share-panel input", width)["font-size"], "16px");
   assert.equal(declarations(".company-invite-share-actions", width)["flex-wrap"], "wrap");
   assert.equal(declarations(".company-invite-share-actions button", width)["min-height"], "44px");
+  assert.equal(declarations(".company-invite-options", width)["grid-template-columns"], width < 768 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))");
 });
 
 for (const width of [320, 375, 670, 768, 1024, 1440]) test(`coffee navigation stays aligned at ${width}px`, () => {

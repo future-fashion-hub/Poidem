@@ -20,6 +20,7 @@ import "./companyInvite.css"
 
 type Props = {
   companyId: number
+  token?: string
   user: User | null
   authLoading: boolean
   cities: DictionaryItem[]
@@ -35,6 +36,7 @@ type Details = {
 }
 export default function CompanyInvitePage({
   companyId,
+  token = "",
   user,
   authLoading,
   cities,
@@ -69,6 +71,11 @@ export default function CompanyInvitePage({
     setDetails(null)
     setNotice("")
     try {
+      if (token) {
+        const preview = await api.previewCompanyInvitation(token)
+        if (request === generation.current && alive.current) setDetails(preview)
+        return
+      }
       if (!companyId) throw new Error("Некорректная ссылка приглашения.")
       const company = await api.getCompany(companyId)
       const [event, mine, application] = await Promise.all([
@@ -99,7 +106,9 @@ export default function CompanyInvitePage({
     } catch (caught) {
       if (request === generation.current && alive.current)
         setError(
-          caught instanceof ApiError && [403, 404, 410].includes(caught.status)
+          !token &&
+            caught instanceof ApiError &&
+            [403, 404, 410].includes(caught.status)
             ? "Приглашение недоступно. Возможно, компания удалена или доступ к ней ограничен."
             : caught instanceof Error
               ? caught.message
@@ -108,7 +117,7 @@ export default function CompanyInvitePage({
     } finally {
       if (request === generation.current && alive.current) setLoading(false)
     }
-  }, [companyId, user?.id])
+  }, [companyId, token, user?.id])
   useEffect(() => {
     if (!authLoading) void load()
     return () => {
@@ -134,6 +143,19 @@ export default function CompanyInvitePage({
     setNotice("")
     const request = generation.current
     try {
+      if (token) {
+        const preview = await api.redeemCompanyInvitation(token)
+        if (alive.current && request === generation.current) {
+          setDetails(preview)
+          setNotice(
+            preview.pending
+              ? "Заявка отправлена организатору. Чат откроется после одобрения."
+              : "Вы в компании! Пора познакомиться в чате.",
+          )
+          onChanged()
+        }
+        return
+      }
       if (details.company.joinType === "request")
         await api.createCompanyApplication(
           details.company.id,
@@ -341,7 +363,10 @@ export default function CompanyInvitePage({
                 участникам.
               </p>
             </div>
-            <CompanyInviteLink company={details.company} />
+            <CompanyInviteLink
+              company={details.company}
+              canManage={details.company.owner.id === user?.id}
+            />
           </div>
         </article>
       )}

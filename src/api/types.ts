@@ -60,6 +60,7 @@ export type EventInput = {
 };
 
 export type Company = {
+  visibility?: "public" | "private";
   id: number;
   eventId: number;
   name: string;
@@ -77,6 +78,11 @@ export type Company = {
 };
 
 export type CompanyUpdate = Partial<Pick<Company, "name" | "description" | "maxMembers" | "joinType" | "rules" | "minAge" | "maxAge">>;
+
+export type CompanyInput = Pick<Company, "name" | "description" | "maxMembers" | "joinType"> & Partial<Pick<Company, "minAge" | "maxAge" | "visibility">>;
+export type CompanyInvitationOptions = { expiresInHours: 24 | 168 | 720; maxUses: number };
+export type CompanyInvitation = { token: string; companyId: number; expiresAt: string; maxUses: number; uses: number; revoked: boolean };
+export type CompanyInvitationPreview = { company: Company; event: Event; member: boolean; pending: boolean };
 
 export type CompanyMessage = {
   id: number;

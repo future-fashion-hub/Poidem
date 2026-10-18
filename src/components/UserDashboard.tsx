@@ -233,7 +233,8 @@ function CompanyCard({
         </button>
       </div>
       {company.description && <p className="plans-company-description">{company.description}</p>}
-      {company.status !== "blocked" && <CompanyInviteLink company={company}/>}
+      {company.status !== "blocked" && <CompanyInviteLink company={company} canManage={owner}/>}
+      {company.visibility === "private" && <p className="company-invite-private-label">Закрытая компания · только по приглашению</p>}
       <div className="plans-capacity" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, company.membersCount / Math.max(1, company.maxMembers) * 100))}%` }}/></div>
       <div className="mt-4 border-t border-[#edf1ea] pt-4">
         {owner ? (

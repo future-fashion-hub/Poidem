@@ -1,4 +1,4 @@
-import type { Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
+import type { CompanyInput, CompanyInvitation, CompanyInvitationOptions, CompanyInvitationPreview, Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 import type { CoffeeFilters, CoffeeInput, CoffeeMeeting } from "./coffeeTypes";
 
@@ -66,6 +66,11 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 const page = <T>(items: T[]): Paginated<T> => ({ items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: items.length ? 1 : 0 } });
 
 export const backendApi = {
+  async getCompanyInvitation(companyId: number) { return request<CompanyInvitation | null>(`/companies/${companyId}/invitation`); },
+  async createCompanyInvitation(companyId: number, input: CompanyInvitationOptions) { return request<CompanyInvitation>(`/companies/${companyId}/invitation`, { method: "POST", body: JSON.stringify(input) }); },
+  async revokeCompanyInvitation(companyId: number) { return request<void>(`/companies/${companyId}/invitation`, { method: "DELETE" }); },
+  async previewCompanyInvitation(token: string) { return request<CompanyInvitationPreview>(`/company-invitations/${encodeURIComponent(token)}`); },
+  async redeemCompanyInvitation(token: string) { return request<CompanyInvitationPreview>(`/company-invitations/${encodeURIComponent(token)}/redeem`, { method: "POST" }); },
   async listCoffeeMeetings(filters: CoffeeFilters = {}, options: PageOptions = {}) { return request<Paginated<CoffeeMeeting>>(`/coffee-meetings${query({ ...filters, page: options.page ?? 1, limit: options.limit ?? 20 })}`); },
   async getCoffeeMeeting(id: number) { return request<CoffeeMeeting>(`/coffee-meetings/${id}`); },
   async createCoffeeMeeting(input: CoffeeInput) { return request<CoffeeMeeting>("/coffee-meetings", { method: "POST", body: JSON.stringify(input) }); },
@@ -112,7 +117,13 @@ export const backendApi = {
   async cancelMyCompanyApplication(companyId: number) { return request<void>(`/companies/${companyId}/applications/me`, { method: "DELETE" }); },
   async joinEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "POST" }); },
   async cancelEventSolo(eventId: number) { return request<void>(`/events/${eventId}/solo-participation`, { method: "DELETE" }); },
-  async createCompany(eventId: number, input: { name: string; description: string | null; maxMembers: number; joinType: "open" | "request"; minAge?: number | null; maxAge?: number | null }) { return request<Company>(`/events/${eventId}/companies`, { method: "POST", body: JSON.stringify(input) }); },
+  async createCompany(eventId: number, input: CompanyInput) {
+    const { visibility, ...publicInput } = input;
+    const privateCompany = visibility === "private";
+    const result = await request<Company>(`/events/${eventId}/${privateCompany ? "private-companies" : "companies"}`, { method: "POST", body: JSON.stringify(privateCompany ? input : publicInput) });
+    if (privateCompany && result.visibility !== "private") throw new ApiError("PRIVACY_NOT_SUPPORTED", "Сервер не подтвердил закрытую видимость компании. Проверьте API.", 502);
+    return result;
+  },
   async createReport(input: { targetType: "user" | "company" | "event"; targetId: number; reason: string; description: string | null }) { return request<Report>("/reports", { method: "POST", body: JSON.stringify(input) }); },
   async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { return request<User>("/users/me", { method: "PATCH", body: JSON.stringify(input) }); },
   async listMyApplications(options: PageOptions = {}) { return request<Paginated<Application>>(`/users/me/applications${query({ page: options.page ?? 1, limit: options.limit ?? 20 })}`); },

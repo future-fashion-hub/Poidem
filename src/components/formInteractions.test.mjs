@@ -39,6 +39,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     setTimeout: callback => { timers.push(callback); return timers.length; },
     clearTimeout: () => {},
     matchMedia: () => ({ matches: false }),
+    confirm: environment.confirm ?? (() => true),
   };
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
@@ -71,12 +72,73 @@ function find(node, predicate) {
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-test("company invitation survives guest registration and profile completion without auto-joining", async () => {
+test("creation form submits private visibility once without changing the public event", async () => {
+  let payload, calls = 0, finish, created = 0;
+  const harness = componentHarness("../App.tsx", {
+    "./components/usePopupDismiss": { usePopupDismiss: onClose => ({ closing: false, dismiss: onClose }) },
+    "./components/useModalDialog": { useModalDialog() {} },
+    "./api": { api: { createCompany: (eventId, input) => { assert.equal(eventId, 7); payload = input; calls++; return new Promise(resolve => { finish = resolve; }); } } },
+  }, { component: "CreateCompanyModal" });
+  const props = { event: { id: 7, title: "Публичное событие" }, onClose() {}, onCreated: async () => created++ };
+  let tree = harness.render(props);
+  find(tree, node => node.type === "input" && node.props.required).props.onChange({ target: { value: "Только свои" } });
+  tree = harness.render(props);
+  find(tree, node => node.props?.ariaLabel === "Кто видит компанию").props.onChange("private");
+  tree = harness.render(props); const form = find(tree, node => node.type === "form");
+  const first = form.props.onSubmit({ preventDefault() {} }); const second = form.props.onSubmit({ preventDefault() {} });
+  assert.equal(calls, 1); assert.equal(payload.visibility, "private"); assert.equal(props.event.visibility, undefined);
+  finish({ id: 42, visibility: "private" }); await Promise.all([first, second]); assert.equal(created, 1);
+});
+
+for (const scenario of ["guest", "open", "request", "revoked"]) test(`private invitation uses token API without ID-based access (${scenario})`, async () => {
+  const token = "b".repeat(64); let mutations = 0, auth = 0;
+  const preview = { company: { id: 42, eventId: 7, visibility: "private", name: "Только свои", owner: { id: 2, firstName: "Маша" }, status: "active", membersCount: 1, maxMembers: 4, joinType: scenario === "request" ? "request" : "open" }, event: { id: 7, title: "Событие", status: "active", startsAt: "2099-11-01T18:00:00Z", endsAt: "2099-11-01T19:00:00Z", cityId: 1, locationName: "Место" }, member: false, pending: false };
+  const harness = componentHarness("./CompanyInvitePage.tsx", {
+    "../api": { api: {
+      previewCompanyInvitation: async value => { assert.equal(value, token); if (scenario === "revoked") throw new (pureModule("../api/types.ts").ApiError)("INVITATION_UNAVAILABLE", "Ссылка отозвана", 410); return preview; },
+      redeemCompanyInvitation: async value => { mutations++; assert.equal(value, token); return { ...preview, member: scenario !== "request", pending: scenario === "request" }; },
+    } }, "./useEventClock": { useEventClock: () => Date.now() },
+  });
+  const props = { companyId: 0, token, user: scenario === "guest" ? null : { id: 1 }, authLoading: false, cities: [], onAuth: () => auth++, onChat() {}, onChanged() {} };
+  harness.render(props); harness.runEffectContaining("void load"); await flush();
+  let tree = harness.render(props); assert.equal(mutations, 0);
+  if (scenario === "revoked") { assert.equal(find(tree, node => node.props?.role === "alert").props.children, "Ссылка отозвана"); return; }
+  find(tree, node => node.type === "button" && node.props?.className === "plans-button plans-button--primary").props.onClick(); await flush();
+  tree = harness.render(props);
+  if (scenario === "guest") { assert.equal(auth, 1); assert.equal(mutations, 0); }
+  else { assert.equal(mutations, 1); assert.ok(find(tree, node => node.props?.role === "status")); }
+});
+
+test("private invitation management has no static ID link for members", () => {
+  const company = { id: 42, visibility: "private", name: "Только свои" };
+  const harness = componentHarness("./CompanyInviteLink.tsx");
+  const member = harness.render({ company, canManage: false });
+  assert.equal(find(member, node => node.type === "input"), undefined);
+  assert.equal(find(member, node => node.type === "button"), undefined);
+  assert.ok(getComponent(harness.render({ company, canManage: true }), "./PrivateCompanyInvites"));
+});
+
+test("owner generates one private invitation, and revoke requires confirmation", async () => {
+  let creates = 0, revokes = 0, finish, confirm = false;
+  const invitation = { token: "c".repeat(64), companyId: 42, expiresAt: "2099-11-01T19:00:00Z", uses: 0, maxUses: 10, revoked: false };
+  const harness = componentHarness("./PrivateCompanyInvites.tsx", { "../api": { api: { getCompanyInvitation: async () => null, createCompanyInvitation: () => { creates++; return new Promise(resolve => { finish = () => resolve(invitation); }); }, revokeCompanyInvitation: async () => { revokes++; } } } }, { confirm: () => confirm });
+  const props = { company: { id: 42, status: "active" } };
+  let tree = harness.render(props); find(tree, node => node.type === "button").props.onClick();
+  harness.render(props); harness.runEffectContaining("getCompanyInvitation"); await flush();
+  tree = harness.render(props);
+  const create = find(tree, node => node.type === "button" && node.props?.children === "Создать ссылку");
+  create.props.onClick(); create.props.onClick(); assert.equal(creates, 1); finish(); await flush();
+  tree = harness.render(props); const revoke = find(tree, node => node.props?.className === "company-invite-revoke");
+  revoke.props.onClick(); await flush(); assert.equal(revokes, 0);
+  confirm = true; revoke.props.onClick(); await flush(); assert.equal(revokes, 1);
+});
+
+for (const token of ["", "a".repeat(64)]) test(`company invitation survives guest registration and profile completion without auto-joining (token=${Boolean(token)})`, async () => {
   const user = { id: 1, firstName: "Анна", isProfileComplete: false };
-  const harness = componentHarness("../App.tsx", { "./api": { api: { registerWithPassword: async () => ({ user }) } } }, { hash: "#invite/42" });
+  const harness = componentHarness("../App.tsx", { "./api": { api: { registerWithPassword: async () => ({ user }) } } }, { hash: token ? "#invite/t/" + token : "#invite/42" });
   let tree = harness.render();
   const invitation = getComponent(tree, "Lazy");
-  assert.equal(invitation.props.companyId, 42); invitation.props.onAuth();
+  assert.equal(invitation.props.companyId, token ? 0 : 42); assert.equal(invitation.props.token, token); invitation.props.onAuth();
   getComponent(harness.render(), "AuthModal").props.onRegister();
   await getComponent(harness.render(), "./components/RegisterModal").props.onPasswordRegister("user", "password");
   tree = harness.render();
@@ -84,7 +146,7 @@ test("company invitation survives guest registration and profile completion with
   assert.equal(getComponent(tree, "EventDrawer"), undefined);
   profile.props.onComplete({ ...user, isProfileComplete: true });
   tree = harness.render();
-  assert.equal(getComponent(tree, "Lazy").props.companyId, 42);
+  assert.equal(getComponent(tree, "Lazy").props.companyId, token ? 0 : 42); assert.equal(getComponent(tree, "Lazy").props.token, token);
   assert.equal(getComponent(tree, "./components/UserDashboard"), undefined);
 });
 

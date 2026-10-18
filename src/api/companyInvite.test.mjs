@@ -7,6 +7,18 @@ const code = ts.transpileModule(readFileSync(new URL("./companyInvite.ts", impor
 new Function("exports", code)(exports);
 const { inviteCompanyId, companyInviteUrl, companyInviteAvailable } = exports;
 
+test("private invitation tokens round-trip without exposing them to ordinary company links", () => {
+  const token = "a".repeat(64);
+  assert.equal(exports.inviteToken("#invite/t/" + token), token);
+  assert.equal(exports.inviteToken("#/invite/t/" + token), token);
+  assert.equal(exports.privateCompanyInviteUrl(token, "https://poidem.vercel.app", "/?q=secret"), "https://poidem.vercel.app/#invite/t/" + token);
+  assert.equal(inviteCompanyId("#invite/t/" + token), 0);
+  for (const invalid of ["a".repeat(63), "../secret", "z".repeat(64), token + "?redirect=evil"]) {
+    assert.equal(exports.inviteToken("#invite/t/" + invalid), "");
+    assert.throws(() => exports.privateCompanyInviteUrl(invalid, "https://poidem.vercel.app"));
+  }
+});
+
 test("invitation URLs contain only a safe company ID, never filters or credentials", () => {
   assert.equal(companyInviteUrl(42, "https://poidem.vercel.app", "/?q=secret#feed"), "https://poidem.vercel.app/#invite/42");
   for (const id of [-1, 0, 1.5, NaN, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => companyInviteUrl(id, "https://poidem.vercel.app"));

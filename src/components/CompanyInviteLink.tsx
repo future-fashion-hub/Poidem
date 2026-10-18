@@ -5,8 +5,15 @@ import ShareOutlined from "@mui/icons-material/ShareOutlined"
 import type { Company } from "../api/types"
 import { companyInviteUrl } from "../api/companyInvite"
 import "./companyInvite.css"
+import PrivateCompanyInvites from "./PrivateCompanyInvites"
 
-export default function CompanyInviteLink({ company }: { company: Company }) {
+export default function CompanyInviteLink({
+  company,
+  canManage = false,
+}: {
+  company: Company
+  canManage?: boolean
+}) {
   const [open, setOpen] = useState(false),
     [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
@@ -49,6 +56,14 @@ export default function CompanyInviteLink({ company }: { company: Company }) {
       setBusy(false)
     }
   }
+  if (company.visibility === "private")
+    return canManage ? (
+      <PrivateCompanyInvites company={company} />
+    ) : (
+      <p className="company-invite-hint">
+        Закрытая компания. За приглашением обратитесь к организатору.
+      </p>
+    )
   return (
     <div className="company-invite-share">
       <button
