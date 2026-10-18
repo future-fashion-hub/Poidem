@@ -4,6 +4,8 @@ import { createMockMapEvents, extraMapCities, relocateMockMapEvent, refreshMockM
 import type { CoffeeFilters, CoffeeInput, CoffeeMeeting, CoffeeRecord } from "./coffeeTypes";
 import { createCoffeeSeeds } from "./mockCoffee";
 import { coffeeCover, validateCoffee } from "./coffee";
+import type { SiteNotification } from "./notificationTypes";
+import { deriveNotifications, mergeNotifications } from "./demoNotifications";
 
 const cities: DictionaryItem[] = [
   { id: 1, name: "Москва", slug: "moscow" }, { id: 2, name: "Санкт-Петербург", slug: "saint-petersburg" },
@@ -63,7 +65,7 @@ const initialCompanies = [
 ];
 
 type StoredInvitation = CompanyInvitation & { redeemedBy: number[] };
-type State = { companyInvitations: Record<string, StoredInvitation>; coffeeRecords: CoffeeRecord[]; coffeeSeedVersion: number; user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
+type State = { notificationsByUser: Record<string, SiteNotification[]>; companyInvitations: Record<string, StoredInvitation>; coffeeRecords: CoffeeRecord[]; coffeeSeedVersion: number; user: User | null; users: User[]; events: Event[]; companies: Company[]; applications: Application[]; reports: Report[]; joinedCompanyIds: number[]; soloEventIds: number[]; companyMemberships: Record<string, number[]>; soloEventMemberships: Record<string, number[]>; favoritesByUser: Record<string, { eventId: number; savedAt: string }[]> };
 const storageKey = "poydem_mock_v1";
 const demoUser: User = { ...people[0], city: cities[0], about: "Люблю технологии, живую музыку и спонтанные планы.", interests: [interests[0], interests[2], interests[6]], role: "user", status: "active", isProfileComplete: true, createdAt: "2026-06-14T12:00:00+03:00", gender: "male", birthDate: "1997-05-18" };
 const adminUser: User = { id: 99, firstName: "Администратор", lastName: "Пойдём", avatarUrl: null, city: cities[0], about: "Системный администратор", interests: [], role: "admin", status: "active", isProfileComplete: true, createdAt: "2026-04-01T09:00:00+03:00", gender: null, birthDate: null };
@@ -81,7 +83,7 @@ const initialReports: Report[] = [
 ];
 const mapEventsSeedVersion = 3;
 const initialCoffee = createCoffeeSeeds(people);
-const fresh = (): State & { mapEventsSeedVersion: number } => ({ companyInvitations: {}, mapEventsSeedVersion, coffeeSeedVersion: 1, coffeeRecords: [...initialCoffee.records], user: null, users: initialUsers, events: [...initialEvents, ...initialCoffee.events.map(event => ({ ...event }))], companies: [...initialCompanies, ...initialCoffee.companies.map(company => ({ ...company }))], applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
+const fresh = (): State & { mapEventsSeedVersion: number } => ({ notificationsByUser: {}, companyInvitations: {}, mapEventsSeedVersion, coffeeSeedVersion: 1, coffeeRecords: [...initialCoffee.records], user: null, users: initialUsers, events: [...initialEvents, ...initialCoffee.events.map(event => ({ ...event }))], companies: [...initialCompanies, ...initialCoffee.companies.map(company => ({ ...company }))], applications: [], reports: initialReports, joinedCompanyIds: [], soloEventIds: [], companyMemberships: {}, soloEventMemberships: {}, favoritesByUser: {} });
 function load(): State {
   try {
     const saved = localStorage.getItem(storageKey);
@@ -178,7 +180,26 @@ function commitDemo(next: State) {
   try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { throw new ApiError("STORAGE_FULL", "Не удалось сохранить изменения. Освободите место в браузере.", 507); }
   state = next;
 }
+function syncDemoNotifications() {
+  const user = requireUser(), key = String(user.id), previous = state.notificationsByUser[key] ?? [];
+  const incoming = deriveNotifications({ userId: user.id, companies: state.companies, events: state.events, applications: state.applications, companyIds: companyIdsFor(user.id), soloIds: eventIdsFor(user.id) });
+  const items = mergeNotifications(previous, incoming);
+  if (JSON.stringify(previous) !== JSON.stringify(items)) commitDemo({ ...state, notificationsByUser: { ...state.notificationsByUser, [key]: items } });
+  return { key, items };
+}
 export const mockApi = {
+  async listNotifications(options: PageOptions = {}) {
+    await wait(); const { items } = syncDemoNotifications();
+    const current = Math.max(1, options.page ?? 1), limit = Math.max(1, options.limit ?? 30);
+    return { ...page(items, current, limit), items: items.slice((current - 1) * limit, current * limit).map(item => ({ ...item })) };
+  },
+  async markNotificationsRead(ids: string[]) {
+    await wait(); const { key, items } = syncDemoNotifications();
+    if (!Array.isArray(ids) || ids.length > 200 || ids.some(id => !items.some(item => item.id === id))) throw new ApiError("NOTIFICATION_NOT_FOUND", "Уведомление недоступно для этого аккаунта", 404);
+    const selected = new Set(ids);
+    const readAt = new Date().toISOString();
+    commitDemo({ ...state, notificationsByUser: { ...state.notificationsByUser, [key]: items.map(item => selected.has(item.id) && !item.readAt ? { ...item, readAt } : item) } });
+  },
   async getCompanyInvitation(companyId: number): Promise<CompanyInvitation | null> {
     await wait(); requireInviteOwner(companyId);
     const invitation = Object.values(state.companyInvitations).find(item => item.companyId === companyId && !item.revoked);
@@ -346,7 +367,7 @@ export const mockApi = {
     const user = requireUser(); await wait(); if (!input.name.trim()) throw new ApiError("VALIDATION_ERROR", "Введите название", 400, { fields: { name: ["Обязательное поле"] } });
     if (input.visibility && !["public", "private"].includes(input.visibility)) throw new ApiError("VALIDATION_ERROR", "Неверная видимость компании", 400);
     if (input.visibility === "private") { const event = state.events.find(item => item.id === eventId); if (!user.isProfileComplete) throw new ApiError("PROFILE_INCOMPLETE", "Заполните профиль", 403); if (!event || event.status !== "active" || Date.parse(event.endsAt || event.startsAt) <= Date.now()) throw new ApiError("EVENT_UNAVAILABLE", "Выберите действующее событие", 409); if (!Number.isInteger(input.maxMembers) || input.maxMembers < 2 || input.maxMembers > 100 || !["open", "request"].includes(input.joinType)) throw new ApiError("VALIDATION_ERROR", "Проверьте правила вступления и число участников", 400); }
-    const item = { ...company(Math.max(Date.now(), ...state.companies.map(item => item.id)) + 1, eventId, input.name, input.description ?? "", input.maxMembers, 1, input.joinType, user), minAge: input.minAge ?? null, maxAge: input.maxAge ?? null, visibility: input.visibility ?? "public" }; commitDemo({ ...state, companies: [...state.companies, item], companyMemberships: { ...state.companyMemberships, [user.id]: [...companyIdsFor(user.id), item.id] }, events: state.events.map(event => event.id === eventId ? { ...event, companiesCount: event.companiesCount + 1, participantsCount: event.participantsCount + 1 } : event) }); return item;
+    const item = { ...company(Math.max(Date.now(), ...state.companies.map(item => item.id)) + 1, eventId, input.name, input.description ?? "", input.maxMembers, 1, input.joinType, user), minAge: input.minAge ?? null, maxAge: input.maxAge ?? null, visibility: input.visibility ?? "public", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; commitDemo({ ...state, companies: [...state.companies, item], companyMemberships: { ...state.companyMemberships, [user.id]: [...companyIdsFor(user.id), item.id] }, events: state.events.map(event => event.id === eventId ? { ...event, companiesCount: event.companiesCount + 1, participantsCount: event.participantsCount + 1 } : event) }); return item;
   },
   async updateMyProfile(input: { firstName?: string; lastName?: string | null; cityId?: number; about?: string | null; interestIds?: number[]; gender?: User["gender"]; birthDate?: string | null }) { const user = requireUser(); await wait(); state.user = { ...user, ...input, city: input.cityId ? cities.find((city) => city.id === input.cityId) ?? user.city : user.city, interests: input.interestIds ? interests.filter((interest) => input.interestIds?.includes(interest.id)) : user.interests, isProfileComplete: Boolean((input.firstName ?? user.firstName) && (input.cityId ?? user.city?.id)) }; state.users = state.users.map((item) => item.id === state.user?.id ? state.user as User : item); persist(); return state.user; },
   async listMyApplications() { await wait(); const user = requireUser(); return page(state.applications.filter(item => item.user.id === user.id).reverse()); },

@@ -1,6 +1,7 @@
 import type { CompanyInput, CompanyInvitation, CompanyInvitationOptions, CompanyInvitationPreview, Application, Company, CompanyMessage, CompanyUpdate, DictionaryItem, Event, EventFilters, EventInput, Favorite, PageOptions, Paginated, Report, User, UserShort } from "./types";
 import { ApiError } from "./types";
 import type { CoffeeFilters, CoffeeInput, CoffeeMeeting } from "./coffeeTypes";
+import type { SiteNotification } from "./notificationTypes";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
 const API_PREFIX = `${BACKEND_URL}/api/v1`;
@@ -66,6 +67,8 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 const page = <T>(items: T[]): Paginated<T> => ({ items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: items.length ? 1 : 0 } });
 
 export const backendApi = {
+  async listNotifications(options: PageOptions = {}) { return request<Paginated<SiteNotification>>(`/users/me/notifications${query({ page: options.page ?? 1, limit: options.limit ?? 30 })}`); },
+  async markNotificationsRead(ids: string[]) { return request<void>("/users/me/notifications/read", { method: "POST", body: JSON.stringify({ ids }) }); },
   async getCompanyInvitation(companyId: number) { return request<CompanyInvitation | null>(`/companies/${companyId}/invitation`); },
   async createCompanyInvitation(companyId: number, input: CompanyInvitationOptions) { return request<CompanyInvitation>(`/companies/${companyId}/invitation`, { method: "POST", body: JSON.stringify(input) }); },
   async revokeCompanyInvitation(companyId: number) { return request<void>(`/companies/${companyId}/invitation`, { method: "DELETE" }); },

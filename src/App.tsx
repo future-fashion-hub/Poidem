@@ -33,6 +33,8 @@ import LocalCafeOutlined from "@mui/icons-material/LocalCafeOutlined";
 import NearbyEvents from "./components/NearbyEvents";
 import { getNearbyLocation } from "./api/nearbyPermissions";
 import { inviteCompanyId, inviteToken } from "./api/companyInvite";
+import NotificationsCenter from "./components/NotificationsCenter";
+import type { NotificationTarget } from "./api/notificationTypes";
 
 const Globe = lazy(() => import("./components/Globe"));
 const CoffeePage = lazy(() => import("./components/CoffeePage"));
@@ -138,11 +140,14 @@ export default function App() {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [nearbyOpen, setNearbyOpen] = useState(false);
   const [coffeeModalOpen, setCoffeeModalOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [dashboardCompanyId, setDashboardCompanyId] = useState<number | undefined>(undefined);
+  const [dashboardTab, setDashboardTab] = useState<"profile" | "events" | "companies" | "applications">("profile");
   const [chatCompanyId, setChatCompanyId] = useState<number | undefined>(undefined);
   const [notice, setNotice] = useState<Notice>(null);
   const onboardingRequired = Boolean(user && !user.isProfileComplete);
   const secondaryModalOpen = authOpen || registerOpen || companyOpen || eventCreateOpen;
-  const modalOpen = !onboardingRequired && Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen || coffeeModalOpen);
+  const modalOpen = !onboardingRequired && Boolean(selected || secondaryModalOpen || favoritesOpen || nearbyOpen || coffeeModalOpen || notificationsOpen);
 
   const flash = (next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 3200); };
   const handleError = (error: unknown) => {
@@ -355,9 +360,23 @@ export default function App() {
     } catch (error) { handleError(error); }
   });
 
+  const handleNotificationAction = async (target: NotificationTarget) => {
+    const userId = currentUserId.current;
+    if (!userId) return;
+    setSelected(null); setFavoritesOpen(false); setNearbyOpen(false);
+    try {
+      if (target.kind === "event" && target.id) {
+        const event = await api.getEvent(target.id);
+        if (currentUserId.current !== userId) return;
+        if (event.status !== "active" || Date.parse(event.endsAt || event.startsAt) <= Date.now()) throw new ApiError("EVENT_UNAVAILABLE", "Событие завершилось или больше недоступно. Посмотрите актуальные планы.", 410);
+        await openEvent(event);
+      } else if (target.kind === "chat" && target.id) { setChatCompanyId(target.id); setView("chats"); }
+      else { setDashboardCompanyId(target.kind === "company" ? target.id : undefined); setDashboardTab(target.kind === "company" ? "companies" : target.tab === "applications" ? "applications" : "events"); setView("profile"); }
+    } catch (caught) { if (currentUserId.current === userId) handleError(caught); }
+  };
   return <div className="app-shell min-h-screen bg-[#f5f7f2] text-[#102318]">
     <div className="app-background" inert={modalOpen ? true : undefined}>
-    <Header user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { resumeInvite.current = null; setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
+    <Header notificationRevision={eventVersion} onNotificationsOpenChange={setNotificationsOpen} onNotificationAction={target => { void handleNotificationAction(target); }} user={user} view={view} onboarding={onboardingRequired} onNavigate={(next) => { setDashboardTab("profile"); setDashboardCompanyId(undefined); resumeInvite.current = null; setView(next); setSelected(null); setFavoritesOpen(false); setNearbyOpen(false); if (next === "home") { setSearch(""); setCityId(0); setCategoryId(0); } }} onAuth={() => setAuthOpen(true)} onRegister={() => setRegisterOpen(true)} onLogout={async () => { await api.logout(); setUser(null); setView("home"); }} />
     <PageErrorBoundary key={`${view}:${user?.id ?? "guest"}`}>
     {!onboardingRequired && view === "invite" && <Suspense fallback={<main className="company-invite-page" role="status">Загружаем приглашение…</main>}><CompanyInvitePage key={inviteSecret || inviteId} companyId={inviteId} token={inviteSecret} user={user} authLoading={authLoading} cities={cities} onAuth={() => { resumeInvite.current = { id: inviteId, token: inviteSecret }; requireAuth(() => undefined); }} onChat={companyId => { resumeInvite.current = null; setChatCompanyId(companyId); setView("chats"); }} onChanged={() => { setEventVersion(version => version + 1); void refreshParticipation().catch(handleError); }}/></Suspense>}
     {!onboardingRequired && view === "coffee" && <Suspense fallback={<main className="mx-auto max-w-[1240px] px-5 py-12" role="status">Загружаем кофе-тайм…</main>}><CoffeePage user={user} cities={cities} onAuth={() => requireAuth(() => undefined)} onPlans={() => { setCoffeeModalOpen(false); setView("profile"); }} onChat={companyId => { setChatCompanyId(companyId); setCoffeeModalOpen(false); setView("chats"); }} onChanged={() => { setEventVersion(version => version + 1); void refreshParticipation().catch(handleError); }} onModalChange={setCoffeeModalOpen}/></Suspense>}
@@ -365,7 +384,7 @@ export default function App() {
     {onboardingRequired && user ? <Onboarding user={user} cities={cities} interests={interests} onComplete={(nextUser) => { setUser(nextUser); const invitation = resumeInvite.current || (view === "invite" ? { id: inviteId, token: inviteSecret } : null); resumeInvite.current = null; if (invitation) { setInviteId(invitation.id); setInviteSecret(invitation.token); setView("invite"); } else setView("profile"); }} /> : null}
     {!onboardingRequired && view === "home" ? <><HomeHero onNavigate={setView} paused={modalOpen} /><EventsCatalog events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} search={search} sort={sort} setCityId={setCityId} setCategoryId={setCategoryId} setSearch={setSearch} setSort={setSort} loading={loading} onSelect={openEvent}/></> : null}
     {!onboardingRequired && view === "feed" ? <EventFeed key={`feed-${user?.id ?? "guest"}`} userId={user?.id ?? null} events={events} cities={cities} categories={categories} onOpen={openEvent} favoritesOpen={favoritesOpen} onFavoritesChange={setFavoritesOpen}/> : null}
-    {!onboardingRequired && view === "profile" && user ? <UserDashboard revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={() => setView("chats")} /> : null}
+    {!onboardingRequired && view === "profile" && user ? <UserDashboard key={`${dashboardTab}:${dashboardCompanyId ?? ""}`} initialTab={dashboardTab} initialCompanyId={dashboardCompanyId} revision={eventVersion} onEventChanged={refreshEvent} user={user} cities={cities} interests={interests} onUpdate={setUser} onOpenEvent={openEvent} onFindEvents={() => setView("map")} onOpenChats={id => { setChatCompanyId(id); setView("chats"); }} /> : null}
     {!onboardingRequired && view === "chats" && user ? <ChatsPage userId={user.id} initialCompanyId={chatCompanyId} /> : null}
     {!onboardingRequired && view === "map" ? <MapPage search={search} setSearch={setSearch} events={events} cities={cities} categories={categories} cityId={cityId} categoryId={categoryId} setCityId={setCityId} setCategoryId={setCategoryId} loading={loading} onSelect={openEvent} onCreate={() => requireAuth(() => setEventCreateOpen(true))} onReset={() => { setSearch(""); setCityId(0); setCategoryId(0); }} /> : null}
     {!onboardingRequired && <NearbyEvents open={nearbyOpen} onOpenChange={setNearbyOpen} suspended={Boolean(view !== "home" || selected || secondaryModalOpen || favoritesOpen)} categories={categories} onOpenEvent={openEvent} isPublicEvent={isPublicEvent}/>}
@@ -380,7 +399,7 @@ export default function App() {
   </div>;
 }
 
-function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogout }: { user: User | null; view: View; onboarding: boolean; onNavigate: (view: View) => void; onAuth: () => void; onRegister: () => void; onLogout: () => void }) {
+function Header({ notificationRevision, onNotificationsOpenChange, onNotificationAction, user, view, onboarding, onNavigate, onAuth, onRegister, onLogout }: { notificationRevision: number; onNotificationsOpenChange: (open: boolean) => void; onNotificationAction: (target: NotificationTarget) => void; user: User | null; view: View; onboarding: boolean; onNavigate: (view: View) => void; onAuth: () => void; onRegister: () => void; onLogout: () => void }) {
   const [menu, setMenu] = useState(false);
   const navigation: Array<[Exclude<View, "invite">, string]> = [["home", "Главная"], ["feed", "Лента"], ["map", "Карта"]];
   if (user && !onboarding) navigation.push(["profile", "Мои планы"], ["chats", "Мои чаты"]);
@@ -392,7 +411,7 @@ function Header({ user, view, onboarding, onNavigate, onAuth, onRegister, onLogo
       <nav aria-label="Основная навигация" className="site-nav flex items-center gap-1 rounded-2xl p-1">
         {navigation.map(([target, label]) => { const NavIcon = navIcons[target]; return <button key={target} data-view={target} aria-current={view === target || (view === "coffee" && target === "map") ? "page" : undefined} onClick={() => { setMenu(false); onNavigate(target); }} className={`site-nav-link rounded-xl px-4 py-2 text-sm font-bold ${view === target ? "site-nav-link--active" : ""}`}><NavIcon className="site-nav-icon" aria-hidden="true"/><span>{label}</span></button>; })}
       </nav>
-      {user && !onboarding ? <div className="flex items-center gap-2">
+      {user && !onboarding ? <div className="flex items-center gap-2"><NotificationsCenter key={user.id} userId={user.id} revision={notificationRevision} onOpenChange={onNotificationsOpenChange} onAction={onNotificationAction}/>
         {user.role === "admin" ? <button onClick={() => window.location.assign("/admin#/")} className="hidden rounded-xl bg-[#102318] px-4 py-2.5 text-sm font-extrabold text-[#dff8a1] shadow-sm transition hover:bg-[#24462d] sm:block">Админка</button> : null}
         <div className="relative"><button onClick={() => setMenu(!menu)} className="profile-trigger flex items-center gap-3 rounded-2xl py-1.5 pl-2 pr-3"><span className="grid h-8 w-8 place-items-center overflow-hidden rounded-xl bg-[#dff8a1] text-xs font-extrabold">{user.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-full w-full object-cover"/> : initials(user)}</span><span className="hidden text-sm font-semibold sm:block">{user.firstName}</span></button>{menu && <div className="menu-popover absolute right-0 top-12 w-44 rounded-2xl p-2 shadow-xl"><button onClick={() => { onNavigate("profile"); setMenu(false); }} className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-[#f1f5ee]">Профиль</button>{user.role === "admin" ? <button onClick={() => window.location.assign("/admin#/")} className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-[#f1f5ee]">Админ-панель</button> : null}<button onClick={onLogout} className="w-full rounded-xl px-3 py-2 text-left text-sm text-[#9e3128] hover:bg-[#fff1ef]">Выйти</button></div>}</div>
       </div> : !user ? <div className="site-auth-actions flex items-center gap-2"><button onClick={onAuth} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[#24462d]">Войти</button><button onClick={onRegister} className="cta-lime rounded-xl px-4 py-2.5 text-sm font-extrabold text-[#102318]"><span className="site-register-full">Создать аккаунт</span><span className="site-register-short">Регистрация</span></button></div> : <div className={`site-header-actions-placeholder${user.role === "admin" ? " site-header-actions-placeholder--admin" : ""}`} aria-hidden="true" inert />}

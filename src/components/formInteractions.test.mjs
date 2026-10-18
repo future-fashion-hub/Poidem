@@ -38,6 +38,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     location: { hash: environment.hash ?? "#feed", search: "", origin: "https://poidem.test", pathname: "/" },
     setTimeout: callback => { timers.push(callback); return timers.length; },
     clearTimeout: () => {},
+    setInterval: () => 1, clearInterval: () => {}, addEventListener() {}, removeEventListener() {},
     matchMedia: () => ({ matches: false }),
     confirm: environment.confirm ?? (() => true),
   };
@@ -54,7 +55,7 @@ function componentHarness(path, modules = {}, environment = {}) {
     const utilities = { "./api/publicCatalog": "../api/publicCatalog.ts", "./api/eventParticipation": "../api/eventParticipation.ts", "./api/russianCount": "../api/russianCount.ts", "../api/russianCount": "../api/russianCount.ts", "./api/types": "../api/types.ts", "../api/types": "../api/types.ts", "../api/coffee": "../api/coffee.ts", "./api/companyInvite": "../api/companyInvite.ts", "../api/companyInvite": "../api/companyInvite.ts" };
     if (name in utilities) return pureModule(utilities[name]);
     return { __esModule: true, default: name };
-  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {} }, environment.navigator ?? {});
+  }, exports, window, { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, callback => { timers.push(callback); return timers.length; }, () => {}, { visibilityState: "visible", body: {}, addEventListener() {}, removeEventListener() {} }, environment.navigator ?? {});
   return {
     render(props) { cursor = 0; effects.length = 0; return exports.default(props); },
     runEffects() { return effects.map(effect => effect()).filter(Boolean); },
@@ -71,6 +72,103 @@ function find(node, predicate) {
 }
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test("missing notification backend is an explicit error, not fake demo notifications", async () => {
+  const harness = componentHarness("./NotificationsCenter.tsx", {
+    "../api": { backendMode: true, api: { listNotifications: async () => { throw new (pureModule("../api/types.ts").ApiError)("NOT_FOUND", "Missing", 404); } } },
+    "../api/pagination": { collectPages: fetch => fetch({}) }, "./useModalDialog": { useModalDialog() {} }, "./usePopupDismiss": { usePopupDismiss: close => ({ closing: false, dismiss: close }) },
+  });
+  const props = { userId: 1, revision: 0, onOpenChange() {}, onAction() {} };
+  find(harness.render(props), node => node.props?.className === "notifications-trigger").props.onClick(); await flush();
+  const tree = harness.render(props);
+  assert.ok(find(tree, node => node.props?.role === "alert"));
+  assert.equal(find(tree, node => node.props?.className === "notifications-empty"), undefined);
+  assert.equal(find(tree, node => node.props?.className === "notifications-item"), undefined);
+});
+
+test("read-all batches long histories and retains confirmed progress on a later failure", async () => {
+  const batches = [], items = Array.from({ length: 201 }, (_, id) => ({ id: String(id), kind: "company", title: "Запись", body: "История", createdAt: new Date().toISOString(), readAt: null, target: { kind: "plans" } }));
+  const harness = componentHarness("./NotificationsCenter.tsx", {
+    "../api": { api: { listNotifications: async () => ({ items }), markNotificationsRead: async ids => { batches.push(ids); if (batches.length === 2) throw new Error("Сбой второй пачки"); } } },
+    "../api/pagination": { collectPages: fetch => fetch({}) }, "./useModalDialog": { useModalDialog() {} }, "./usePopupDismiss": { usePopupDismiss: close => ({ closing: false, dismiss: close }) },
+  });
+  const props = { userId: 1, revision: 0, onOpenChange() {}, onAction() {} };
+  find(harness.render(props), node => node.props?.className === "notifications-trigger").props.onClick(); await flush();
+  find(harness.render(props), node => node.props?.className === "notifications-read-all").props.onClick(); await flush();
+  const tree = harness.render(props); assert.deepEqual(batches.map(batch => batch.length), [200, 1]);
+  assert.equal(find(tree, node => node.props?.className === "notifications-trigger").props["aria-label"], "Уведомления, непрочитанных: 1");
+  assert.ok(find(tree, node => node.props?.role === "alert"));
+});
+
+for (const fails of [false, true]) test(`notifications mark-read updates only after confirmation (failure=${fails})`, async () => {
+  const item = { id: "n1", kind: "company", title: "Компания создана", body: "Наша компания", createdAt: new Date().toISOString(), readAt: null, target: { kind: "company", id: 42 } };
+  let writes = 0, finish;
+  const harness = componentHarness("./NotificationsCenter.tsx", {
+    "../api": { backendMode: false, api: { listNotifications: async () => ({ items: [item] }), markNotificationsRead: ids => { writes++; assert.deepEqual(ids, ["n1"]); return new Promise((resolve, reject) => { finish = () => fails ? reject(new Error("Не удалось сохранить прочтение")) : resolve(); }); } } },
+    "../api/pagination": { collectPages: fetch => fetch({}) }, "./useModalDialog": { useModalDialog() {} }, "./usePopupDismiss": { usePopupDismiss: close => ({ closing: false, dismiss: close }) },
+  });
+  const props = { userId: 1, revision: 0, onOpenChange() {}, onAction() {} };
+  let tree = harness.render(props); find(tree, node => node.props?.className === "notifications-trigger").props.onClick(); await flush(); tree = harness.render(props);
+  const mark = find(tree, node => node.props?.className === "notifications-mark-one"); mark.props.onClick(); mark.props.onClick();
+  assert.equal(writes, 1); tree = harness.render(props);
+  assert.equal(find(tree, node => node.props?.className === "notifications-item").props["data-unread"], true);
+  assert.equal(find(tree, node => node.props?.["aria-label"] === "Закрыть уведомления").props.disabled, true);
+  finish(); await flush(); tree = harness.render(props);
+  assert.ok(find(tree, node => node.props?.role === "dialog"), "marking one read keeps the center open");
+  if (fails) { assert.equal(find(tree, node => node.props?.className === "notifications-item").props["data-unread"], true); assert.ok(find(tree, node => node.props?.role === "alert")); }
+  else { assert.equal(find(tree, node => node.props?.className === "notifications-item").props["data-unread"], undefined); find(tree, node => node.props?.className === "notifications-tabs").props.children[1].props.onClick(); tree = harness.render(props); assert.ok(find(tree, node => node.type === "h3" && node.props.children === "Всё прочитано")); }
+});
+
+test("notification destination opens only after marking read and dismissing the panel", async () => {
+  let target, writes = 0;
+  const item = { id: "n1", kind: "application", title: "Новая заявка", body: "Компания", createdAt: new Date().toISOString(), readAt: null, target: { kind: "company", id: 42 } };
+  const harness = componentHarness("./NotificationsCenter.tsx", {
+    "../api": { api: { listNotifications: async () => ({ items: [item] }), markNotificationsRead: async () => writes++ } },
+    "../api/pagination": { collectPages: fetch => fetch({}) }, "./useModalDialog": { useModalDialog() {} }, "./usePopupDismiss": { usePopupDismiss: close => ({ closing: false, dismiss: close }) },
+  });
+  const props = { userId: 1, revision: 0, onOpenChange() {}, onAction: next => { target = next; } };
+  find(harness.render(props), node => node.props?.className === "notifications-trigger").props.onClick(); await flush();
+  let tree = harness.render(props); find(tree, node => node.props?.className === "notifications-item-actions").props.children[0].props.onClick();
+  assert.equal(target, undefined); await flush(); tree = harness.render(props); assert.equal(writes, 1);
+  harness.runEffectContaining("leaving && !busy"); assert.deepEqual(target, { kind: "company", id: 42 });
+  assert.equal(find(harness.render(props), node => node.props?.role === "dialog"), undefined);
+});
+
+test("older notification reads cannot undo a successful mark-read mutation", async () => {
+  let reads = 0, oldRead;
+  const item = { id: "n1", kind: "event", title: "Обновлено", body: "Детали", createdAt: new Date().toISOString(), readAt: null, target: { kind: "event", id: 7 } };
+  const harness = componentHarness("./NotificationsCenter.tsx", {
+    "../api": { api: { listNotifications: () => ++reads === 1 ? new Promise(resolve => { oldRead = resolve; }) : Promise.resolve({ items: [item] }), markNotificationsRead: async () => {} } },
+    "../api/pagination": { collectPages: fetch => fetch({}) }, "./useModalDialog": { useModalDialog() {} }, "./usePopupDismiss": { usePopupDismiss: close => ({ closing: false, dismiss: close }) },
+  });
+  const props = { userId: 1, revision: 0, onOpenChange() {}, onAction() {} };
+  harness.render(props); harness.runEffectContaining("void load");
+  find(harness.render(props), node => node.props?.className === "notifications-trigger").props.onClick(); await flush();
+  find(harness.render(props), node => node.props?.className === "notifications-read-all").props.onClick(); await flush();
+  oldRead({ items: [item] }); await flush();
+  assert.equal(find(harness.render(props), node => node.props?.className === "notifications-item").props["data-unread"], undefined);
+});
+
+test("header notifications are absent for guests and unfinished profiles", () => {
+  const harness = componentHarness("../App.tsx", {}, { component: "Header" });
+  const props = { user: null, view: "home", onboarding: false, onNavigate() {}, onAuth() {}, onRegister() {}, onLogout() {} };
+  assert.equal(getComponent(harness.render(props), "./components/NotificationsCenter"), undefined);
+  assert.equal(getComponent(harness.render({ ...props, user: { id: 1, firstName: "Анна" }, onboarding: true }), "./components/NotificationsCenter"), undefined);
+  const center = getComponent(harness.render({ ...props, user: { id: 1, firstName: "Анна" } }), "./components/NotificationsCenter"); assert.equal(center.props.userId, 1);
+});
+
+test("notification routes target the selected company manager, chat and event", async () => {
+  const user = { id: 1, firstName: "Анна", isProfileComplete: true };
+  const event = { id: 7, title: "Событие", status: "active", startsAt: "2099-11-01T18:00:00Z", endsAt: "2099-11-01T19:00:00Z" };
+  const harness = componentHarness("../App.tsx", { "./api": { api: { loginWithPassword: async () => ({ user }), getEvent: async () => event, listEventCompanies: async () => ({ items: [] }) } }, "./api/pagination": { collectPages: fetch => fetch({}) } });
+  getComponent(harness.render(), "Header").props.onAuth(); await getComponent(harness.render(), "AuthModal").props.onAdminLogin("user", "password");
+  let tree = harness.render(); getComponent(tree, "Header").props.onNotificationAction({ kind: "company", id: 42 }); await flush();
+  tree = harness.render(); const plans = getComponent(tree, "./components/UserDashboard"); assert.equal(plans.props.initialTab, "companies"); assert.equal(plans.props.initialCompanyId, 42);
+  getComponent(tree, "Header").props.onNotificationAction({ kind: "chat", id: 42 }); await flush();
+  tree = harness.render(); assert.equal(getComponent(tree, "./components/ChatsPage").props.initialCompanyId, 42);
+  getComponent(tree, "Header").props.onNotificationAction({ kind: "event", id: 7 }); await flush();
+  assert.equal(getComponent(harness.render(), "EventDrawer").props.event.id, 7);
+});
 
 test("creation form submits private visibility once without changing the public event", async () => {
   let payload, calls = 0, finish, created = 0;
@@ -234,7 +332,7 @@ for (const requestedExists of [true, false]) test(`coffee chat opens only the re
   const tree = harness.render(props);
   const title = find(tree, node => node.props?.className === "chat-topbar-title");
   if (requestedExists) assert.equal(find(title, node => node.type === "h2").props.children, "Наш кофе");
-  else assert.equal(title, undefined);
+  else { assert.equal(title, undefined); assert.ok(find(tree, node => node.props?.role === "alert")); }
 });
 
 test("coffee route is public and does not remove the guest login flow", () => {

@@ -29,6 +29,8 @@ import CompanyInviteLink from "./CompanyInviteLink"
 
 type Tab = "profile" | "events" | "companies" | "applications"
 type Props = {
+  initialTab?: Tab
+  initialCompanyId?: number
   revision: number
   onEventChanged: (id: number) => Promise<Event>
   user: User
@@ -37,7 +39,7 @@ type Props = {
   onUpdate: (user: User) => void
   onOpenEvent: (event: Event) => void
   onFindEvents: () => void
-  onOpenChats: () => void
+  onOpenChats: (companyId?: number) => void
 }
 const tabs: Array<[Tab, string]> = [
   ["profile", "Мой профиль"],
@@ -61,6 +63,8 @@ const appLabels: Record<Application["status"], string> = {
 }
 
 export default function UserDashboard({
+  initialTab,
+  initialCompanyId,
   user,
   cities,
   interests,
@@ -71,14 +75,14 @@ export default function UserDashboard({
   revision,
   onEventChanged,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("profile")
+  const [tab, setTab] = useState<Tab>(initialTab ?? "profile")
   const [events, setEvents] = useState<Event[]>([])
   const [soloIds, setSoloIds] = useState<number[]>([])
   const [cancelling, setCancelling] = useState<number | null>(null)
   const [allCompanies, setCompanies] = useState<Company[]>([])
   const [companyEvents, setCompanyEvents] = useState<CompanyEventIndex>({})
   const now = useEventClock(companyEvents)
-  const companies = allCompanies.filter(company => companyEventAvailable(company, companyEvents, now))
+  const companies = allCompanies.filter(company => companyEventAvailable(company, companyEvents, now)).sort((a, b) => Number(b.id === initialCompanyId) - Number(a.id === initialCompanyId))
   const [applications, setApplications] = useState<Application[]>([])
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState("")
@@ -175,7 +179,8 @@ export default function UserDashboard({
           {tab === "companies" && <section>
             <div className="plans-section-heading"><div><p className="plans-eyebrow">Те, с кем вы идёте</p><h2>Мои компании</h2></div><span>{loading ? "Загружаем…" : `Всего: ${companies.length}`}</span></div>
             {!loading && !error && !companies.length && empty("Найдите своих людей", "Выберите событие и присоединитесь к компании или создайте свою.")}
-            <div className="plans-company-list">{companies.map(company => <CompanyCard key={company.id} company={company} user={user} onChanged={async () => { await onEventChanged(company.eventId); await load() }} onOpenChats={onOpenChats}/>)}</div>
+            {!loading && initialCompanyId && !companies.some(company => company.id === initialCompanyId) && <p className="plans-error" role="status">Эта компания больше недоступна. Ниже — ваши актуальные компании.</p>}
+            <div className="plans-company-list">{companies.map(company => <CompanyCard key={company.id} initialManage={company.id === initialCompanyId} company={company} user={user} onChanged={async () => { await onEventChanged(company.eventId); await load() }} onOpenChats={() => onOpenChats(company.id)}/>)}</div>
           </section>}
           {tab === "applications" && <section>
             <div className="plans-section-heading"><div><p className="plans-eyebrow">На связи с организаторами</p><h2>Мои заявки</h2></div><span>{loading ? "Загружаем…" : `Всего: ${applications.length}`}</span></div>
@@ -190,17 +195,19 @@ export default function UserDashboard({
 
 function CompanyCard({
   company,
+  initialManage = false,
   user,
   onChanged,
   onOpenChats,
 }: {
   company: Company
+  initialManage?: boolean
   user: User
   onChanged: () => Promise<void>
   onOpenChats: () => void
 }) {
   const owner = company.owner.id === user.id
-  const [manage, setManage] = useState(false)
+  const [manage, setManage] = useState(initialManage && owner)
   const age =
     company.minAge !== null || company.maxAge !== null
       ? ` · возраст ${company.minAge ?? "—"}–${company.maxAge ?? "—"}`

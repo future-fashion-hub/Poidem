@@ -3,7 +3,31 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import postcss from "postcss";
 
-const sheets = ["../index.css", "../mobile.css", "./coffee.css", "./companyInvite.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
+const sheets = ["../index.css", "../mobile.css", "./coffee.css", "./companyInvite.css", "./notifications.css"].map(path => postcss.parse(readFileSync(new URL(path, import.meta.url), "utf8")));
+
+for (const width of [320, 375, 402, 670, 1440]) test(`notifications keep touch controls and scroll area at ${width}px`, () => {
+  assert.equal(declarations(".notifications-panel", width)["min-width"], "0");
+  assert.equal(declarations(".notifications-panel", width)["max-width"], "100%");
+  assert.equal(declarations(".notifications-list", width)["min-height"], "0");
+  assert.equal(declarations(".notifications-list", width)["overflow-y"], "auto");
+  assert.equal(declarations(".notifications-icon-button", width).width, "44px");
+  assert.equal(declarations(".notifications-trigger", width).height, "44px");
+  assert.equal(declarations(".notifications-item-copy", width)["overflow-wrap"], "anywhere");
+  assert.equal(declarations(".notifications-panel", width).height, width < 768 ? "min(90dvh, 900px)" : "100dvh");
+});
+
+test("notification animations are transform-only and gated by reduced motion", () => {
+  const sheet = sheets.at(-1);
+  sheet.walkRules(rule => {
+    if (!rule.selector.includes("notifications-panel")) return;
+    rule.walkDecls(/^animation/, () => {
+      let parent = rule.parent, allowed = false;
+      while (parent) { if (parent.type === "atrule" && parent.name === "media" && parent.params.includes("prefers-reduced-motion: no-preference")) allowed = true; parent = parent.parent; }
+      assert.equal(allowed, true);
+    });
+  });
+  sheet.walkAtRules("keyframes", animation => animation.walkDecls(declaration => assert.equal(declaration.prop, "transform")));
+});
 
 for (const width of [320, 375, 402, 670, 1440]) test(`invitation page and share controls fit at ${width}px`, () => {
   assert.equal(declarations(".company-invite-page", width)["min-width"], "0");

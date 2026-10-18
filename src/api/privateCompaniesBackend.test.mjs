@@ -39,3 +39,12 @@ test("token APIs use explicit read and authenticated mutation operations with cr
   assert.equal(calls[2].init.method, "POST"); assert.equal(calls[3].init.method, "DELETE");
   assert.ok(calls.every(call => call.init.credentials === "include"));
 });
+
+test("notification adapter sends server pagination and explicit read IDs", async () => {
+  const { api, calls } = adapter(() => response({ items: [] }));
+  await api.listNotifications({ page: 3, limit: 50 }); await api.markNotificationsRead(["n:1", "n:2"]);
+  assert.equal(calls[0].url, "https://api.test/api/v1/users/me/notifications?page=3&limit=50");
+  assert.equal(calls[1].url, "https://api.test/api/v1/users/me/notifications/read");
+  assert.equal(calls[1].init.method, "POST"); assert.deepEqual(JSON.parse(calls[1].init.body), { ids: ["n:1", "n:2"] });
+  assert.ok(calls.every(call => call.init.credentials === "include"));
+});
