@@ -1,0 +1,41 @@
+.event-directions { min-width: 0; margin-block: 16px; border: 1px solid var(--line); border-radius: 20px; background: #fff; color: var(--ink); }
+.event-directions-trigger { display: flex; align-items: center; gap: 12px; min-width: 0; width: 100%; min-height: 72px; padding: 14px 16px; text-align: left; border-radius: 20px; cursor: pointer; touch-action: manipulation; }
+.event-directions-icon { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 14px; background: var(--lime); color: var(--ink); }
+.event-directions-trigger-copy { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.event-directions-trigger-copy strong { display: block; font-size: 14px; font-weight: 800; }
+.event-directions-trigger-copy small { display: block; margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+.event-directions-chevron { flex-shrink: 0; }
+.event-directions-trigger[aria-expanded="true"] .event-directions-chevron { transform: rotate(180deg); }
+.event-directions-panel { min-width: 0; padding: 0 16px 16px; }
+.event-directions-address { padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
+.event-directions-note, .event-directions-unavailable { margin-top: 8px; font-size: 12px; line-height: 1.7; color: var(--ink-soft); overflow-wrap: anywhere; }
+.event-directions-modes { min-width: 0; margin-block: 16px; }
+.event-directions-modes legend { margin-bottom: 8px; font-size: 12px; font-weight: 700; }
+.event-directions-modes > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.event-directions-modes button { display: inline-flex; align-items: center; justify-content: center; flex: 1 1 110px; gap: 8px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: #fff; font-size: 13px; font-weight: 650; cursor: pointer; touch-action: manipulation; }
+.event-directions-modes button svg { width: 20px; height: 20px; flex-shrink: 0; }
+.event-directions-modes button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--lime); }
+.event-directions-providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.event-directions-providers a { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: #f3f7e9; font-size: 13px; font-weight: 700; color: var(--ink); text-decoration: none; touch-action: manipulation; }
+.event-directions-providers a > span { min-width: 0; overflow-wrap: anywhere; }
+.event-directions-providers a > svg { flex-shrink: 0; width: 18px; height: 18px; }
+.event-directions-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin-top: 12px; }
+.event-directions-footer > p { flex: 1 1 180px; margin: 0; }
+.event-directions-copy { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 44px; padding: 8px 0; color: var(--ink); font-size: 12px; font-weight: 650; cursor: pointer; touch-action: manipulation; }
+.event-directions-copy svg { width: 16px; height: 16px; }
+.event-directions-copy:disabled { opacity: .5; cursor: default; }
+.event-directions :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+@media (max-width: 599px) {
+  .event-directions-providers { grid-template-columns: minmax(0, 1fr); }
+  .event-directions-trigger { padding: 12px; gap: 10px; }
+  .event-directions-panel { padding: 0 12px 12px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .event-directions-trigger:hover { background: #f5f8ed; }
+  .event-directions-providers a:hover { background: var(--lime); border-color: var(--lime); }
+  .event-directions-copy:hover { text-decoration: underline; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .event-directions-chevron { transition: transform .22s ease; }
+  .event-directions-providers a, .event-directions-trigger { transition: background-color .18s ease; }
+}

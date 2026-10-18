@@ -1,6 +1,7 @@
 import { usePopupDismiss } from "./components/usePopupDismiss";
 import { useModalDialog } from "./components/useModalDialog";
 import CatalogFilters from "./components/CatalogFilters";
+import EventDirections from "./components/EventDirections";
 import { countLabel } from "./api/russianCount";
 import { mergeEvent, soloEventIds } from "./api/eventParticipation";
 import { publicDictionary, publicEvents, technicalFixture } from "./api/publicCatalog";
@@ -517,6 +518,7 @@ function EventDrawer({ event, city, category, companies: allCompanies, joinedCom
           <div><span className="event-modal-fact-icon"><Icon name="users" size={19}/></span><span><small>Уже собираются</small><strong>{countLabel(event.participantsCount, "members")}</strong></span></div>
         </div>
 
+        <EventDirections key={event.id} event={event} cityName={city?.name}/>
         {event.description ? <p className="event-modal-description">{event.description}</p> : null}
 
         <div className="event-modal-actions">

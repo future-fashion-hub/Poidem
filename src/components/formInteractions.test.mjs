@@ -73,6 +73,47 @@ function find(node, predicate) {
 const getComponent = (tree, name) => find(tree, node => node.type === name || node.type?.name === name);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
+const directionsModules = {
+  "../api/eventDirections": { routeDestination: event => event.locationName ? { value: "59.9,30.2", label: event.locationName, exact: true } : null,
+    directionLinks: (_destination, mode) => [{ id: "yandex", label: "Яндекс Карты", href: `https://yandex.ru/maps/?rtt=${mode}` }] },
+};
+test("directions expand inline, change travel mode, and Escape returns focus without closing the event", () => {
+  const harness = componentHarness("./EventDirections.tsx", directionsModules);
+  const props = { event: { id: 42, locationName: "Место встречи", address: "Длинный адрес" }, cityName: "Москва" };
+  let tree = harness.render(props); assert.equal(find(tree, node => node.type === "a"), undefined);
+  find(tree, node => node.props?.className === "event-directions-trigger").props.onClick();
+  tree = harness.render(props); let link = find(tree, node => node.type === "a");
+  assert.equal(link.props.target, "_blank"); assert.equal(link.props.rel, "noopener noreferrer"); assert.match(link.props.href, /walking$/);
+  const modes = find(tree, node => node.props?.className === "event-directions-modes");
+  find(modes, node => node.type === "button" && node.props.children[1].props.children === "На машине").props.onClick();
+  tree = harness.render(props); assert.match(find(tree, node => node.type === "a").props.href, /driving$/);
+  let focused = false, prevented = false, stopped = false;
+  find(tree, node => node.props?.className === "event-directions-trigger").props.ref.current = { focus: () => { focused = true; } };
+  tree.props.onKeyDown({ key: "Escape", preventDefault: () => { prevented = true; }, stopPropagation: () => { stopped = true; } });
+  assert.ok(focused && prevented && stopped); assert.equal(find(harness.render(props), node => node.type === "a"), undefined);
+});
+
+test("directions copy only on request, suppress duplicate copies and report clipboard errors", async () => {
+  let copies = 0, finish;
+  const harness = componentHarness("./EventDirections.tsx", directionsModules, { navigator: { clipboard: { writeText: value => { copies++; assert.match(value, /Место встречи/); return new Promise(resolve => { finish = resolve; }); } } } });
+  const props = { event: { id: 42, locationName: "Место встречи" } };
+  find(harness.render(props), node => node.props?.className === "event-directions-trigger").props.onClick();
+  let tree = harness.render(props); const button = find(tree, node => node.props?.className === "event-directions-copy");
+  button.props.onClick(); button.props.onClick(); assert.equal(copies, 1);
+  assert.equal(find(harness.render(props), node => node.props?.className === "event-directions-copy").props.disabled, true);
+  finish(); await flush(); assert.ok(find(harness.render(props), node => node.props?.role === "status"));
+  const denied = componentHarness("./EventDirections.tsx", directionsModules);
+  find(denied.render(props), node => node.props?.className === "event-directions-trigger").props.onClick();
+  find(denied.render(props), node => node.props?.className === "event-directions-copy").props.onClick(); await flush();
+  assert.ok(find(denied.render(props), node => node.props?.role === "alert"));
+});
+
+test("directions do not offer an empty or invented destination", () => {
+  const harness = componentHarness("./EventDirections.tsx", directionsModules);
+  const tree = harness.render({ event: { id: 42, locationName: "" } });
+  assert.equal(tree.props.className, "event-directions-unavailable"); assert.equal(find(tree, node => node.type === "button"), undefined);
+});
+
 const pollFixture = { id: 7, companyId: 42, question: "Где встречаемся?", options: [{ id: "1", label: "У входа", votes: 1 }, { id: "2", label: "Внутри", votes: 0 }], votersCount: 1, selectedOptionId: "1", author: { id: 1, firstName: "Алексей" }, closesAt: "2099-01-01T12:00:00Z", closed: false };
 test("poll cards expose selection, changing/removing vote and owner-only closing controls", async () => {
   const votes = [], closed = [];
@@ -469,6 +510,7 @@ for (const soloJoined of [false, true]) test(`solo button has aligned layout and
   };
   const tree = harness.render(props);
   const actions = find(tree, node => node.props?.className === "event-modal-actions");
+  assert.equal(getComponent(tree, "./components/EventDirections").props.event, props.event);
   assert.equal(actions.props.children.length, 2);
   assert.ok(actions.props.children.every(child => child.type === "button"), "status text must not stretch the other button");
   const button = actions.props.children[0];
